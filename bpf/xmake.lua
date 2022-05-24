@@ -51,7 +51,7 @@ rule_end()
 add_rules("mode.release", "mode.debug")
 
 -- toolchain
-add_requires("llvm >=12.x")
+add_requires("llvm")
 set_toolchains("@llvm")
 
 -- requirements

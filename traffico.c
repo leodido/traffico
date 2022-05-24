@@ -9,7 +9,7 @@
 #include <traffico.skel.h>
 
 const char *argp_program_version = "0.0";
-const char *argp_program_bug_address = "https://github.com/l13o/traffico/issues";
+const char *argp_program_bug_address = "https://github.com/leodido/traffico/issues";
 const char argp_program_doc[] =
     "\n"
     "Isolate your host the eBPF way.\n";

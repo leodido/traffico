@@ -13,13 +13,13 @@ README
 CONTACT
 
     If you have problems, question, ideas or suggestions, please contact us by
-    posting to https://github.com/l13o/traffico/issues.
+    posting to https://github.com/leodido/traffico/issues.
 
 DOWNLOAD
 
     To download the very latest source do this:
 
-    git clone https://github.com/l13o/traffico.git
+    git clone https://github.com/leodido/traffico.git
 
 USAGE
 

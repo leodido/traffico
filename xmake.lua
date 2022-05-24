@@ -3,9 +3,6 @@ set_xmakever("2.6.1") -- Minimum version to compile BPF source correctly
 -- rules
 add_rules("mode.release", "mode.debug")
 
--- repositories
-includes("xmake/repos.lua")
-
 -- traffico
 target("traffico")
     set_kind("binary")
