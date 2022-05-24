@@ -21,6 +21,10 @@ DOWNLOAD
 
     git clone https://github.com/l13o/traffico.git
 
+USAGE
+
+    ...
+
 BUILD
 
     To compile traffico from source you either provide your `vmlinux.h` in the
@@ -32,6 +36,10 @@ BUILD
     Now you will be able to build traffico from source by running:
 
     xmake
+
+    In case you only want to compile the BPF programs you can do this:
+
+    xmake -b bpf
 
 MAINTAINERS
 
