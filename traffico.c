@@ -6,7 +6,7 @@
 #include <argp.h>
 #include <bpf/libbpf.h>
 
-#include <traffico.skel.h>
+#include "traffico.skel.h"
 
 const char *argp_program_version = "0.0";
 const char *argp_program_bug_address = "https://github.com/leodido/traffico/issues";
