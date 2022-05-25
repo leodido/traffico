@@ -14,3 +14,8 @@ target("traffico")
     add_deps("bpf")
     add_packages("libbpf")
     add_files({"traffico.c"}, { languages = { "c11" }})
+
+-- main
+target("main")
+    set_kind("binary")
+    add_files({"main.c"}, { langguages = { "c11" }})
