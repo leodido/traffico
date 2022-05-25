@@ -128,9 +128,10 @@ int main(int argc, char **argv)
     {
         return err;
     }
+
+    // Fallback to the default gateway interface
     if (config.ifindex == 0)
     {
-        // Grab the default gateway interface
         err = get_gateway_iface(config.ifname);
         if (err)
         {
@@ -150,7 +151,7 @@ int main(int argc, char **argv)
     }
 
     // Setup libbpf
-    libbpf_set_strict_mode(LIBBPF_STRICT_ALL);
+    libbpf_set_strict_mode(LIBBPF_STRICT_ALL | LIBBPF_STRICT_AUTO_RLIMIT_MEMLOCK);
     libbpf_set_print(libbpf_print_fn);
 
     // Skeleton
