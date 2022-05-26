@@ -8,47 +8,96 @@
 
 #include "rfc3330.skel.h"
 
-const char *argp_program_version = "0.0";
+#define CLI_NAME "traffico"
+const char *argp_program_version = CLI_NAME " 0.0";
 const char *argp_program_bug_address = "https://github.com/leodido/traffico/issues";
+error_t argp_err_exit_status = 1;
 const char argp_program_doc[] =
     "\n"
     "Isolate your host the eBPF way.\n";
 
-static const struct argp_option argp_opts[] = {
+const char OPT_VERBOSE_LONG[] = "verbose";
+const char OPT_VERBOSE_KEY = 'v';
+const char OPT_IFNAME_LONG[] = "ifname";
+const char OPT_IFNAME_KEY = 'i';
+const char OPT_IFNAME_ARG[] = "<ifname>";
+const char OPT_ATTACH_LONG[] = "at";
+const char OPT_ATTACH_KEY = 0x80;
+const char OPT_ATTACH_ARG[] = "ingress|egress";
 
-    {"verbose", 'v', NULL, 0, "Verbose debug output"},
-    {"ifname", 'i', "IFNAME", 0, "Where to attach the filter"},
-    {}
+const struct argp_option argp_opts[] = {
+
+    {OPT_VERBOSE_LONG, OPT_VERBOSE_KEY, NULL, 0, "Verbose debug output", -1},
+    {OPT_IFNAME_LONG, OPT_IFNAME_KEY, OPT_IFNAME_ARG, 0, "Interface to which to attach the filter\n(defaults to the default gateway interface)", 1},
+    {OPT_ATTACH_LONG, OPT_ATTACH_KEY, OPT_ATTACH_ARG, 0, "Where to attach the filter (defaults to egress)", 1},
+    {"", 0, 0, OPTION_DOC, 0, 0}, // Spacer
+    {0}                           // .
 
 };
 
-static struct config
+struct args
 {
     bool verbose;
     char ifname[IF_NAMESIZE];
     int ifindex;
+    enum bpf_tc_attach_point attach_point;
 } config;
 
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
+    struct args *config = state->input;
     int ifindex;
     switch (key)
     {
-    case 'v':
-        config.verbose = true;
+
+    // Initializations
+    case ARGP_KEY_INIT:
+        config->attach_point = BPF_TC_EGRESS;
+        config->ifindex = 0;
         break;
-    case 'i':
+
+    // Options
+    case OPT_VERBOSE_KEY:
+        config->verbose = true;
+        break;
+    case OPT_IFNAME_KEY:
         ifindex = if_nametoindex(arg);
         if (ifindex == 0)
         {
-            argp_error(state, "unkown interface: %s\n", arg);
+            argp_error(state, "option '--%s' requires an existing interface: got '%s'\n", OPT_IFNAME_LONG, arg);
         }
-        config.ifindex = ifindex;
-        strcpy(config.ifname, arg);
+        config->ifindex = ifindex;
+        strcpy(config->ifname, arg);
         break;
-    case ARGP_KEY_ARG:
-        argp_usage(state);
+    case OPT_ATTACH_KEY:
+        /**/ if (strncasecmp(arg, "egress", 6) == 0)
+        {
+            config->attach_point = BPF_TC_EGRESS;
+        }
+        else if (strncasecmp(arg, "ingress", 7) == 0)
+        {
+            config->attach_point = BPF_TC_INGRESS;
+        }
+        else
+        {
+            argp_error(state, "option '--%s' requires one of the following values: %s", OPT_ATTACH_LONG, OPT_ATTACH_ARG);
+        }
         break;
+
+    // Final settings, validations
+    case ARGP_KEY_FINI:
+        // Fallback to the default gateway interface by default
+        if (config->ifindex == 0)
+        {
+            if (get_gateway_iface(config->ifname))
+            {
+                argp_error(state, "could not get the default gateway interface\n");
+            }
+            config->ifindex = if_nametoindex(config->ifname);
+            assert(config.ifindex != 0);
+        }
+        break;
+
     default:
         return ARGP_ERR_UNKNOWN;
     }
@@ -123,25 +172,20 @@ int main(int argc, char **argv)
     buf[sizeof(buf) - 1] = '\0';
 
     // CLI
-    err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
+    struct args config = {
+        .verbose = false, // Must set verbosity before the parsing starts
+    };
+    err = argp_parse(&argp, argc, argv, ARGP_IN_ORDER, NULL, &config);
     if (err)
     {
         return err;
     }
 
-    // Fallback to the default gateway interface
-    if (config.ifindex == 0)
-    {
-        err = get_gateway_iface(config.ifname);
-        if (err)
-        {
-            fprintf(stderr, "traffico: failed to get the default gateway interface\n");
-            return 1; // nothing to cleanup
-        }
-        config.ifindex = if_nametoindex(config.ifname);
-        assert(config.ifindex != 0);
-    }
+    fprintf(stdout, "traffico: verbose? %d\n", config.verbose);
     fprintf(stdout, "traffico: using interface %d: %s\n", config.ifindex, config.ifname);
+    fprintf(stdout, "traffico: attaching at %d\n", config.attach_point);
+
+    exit(0);
 
     // Setup signal handling
     if (signal(SIGINT, sig_handler) == SIG_ERR || signal(SIGTERM, sig_handler) == SIG_ERR)
@@ -163,8 +207,6 @@ int main(int argc, char **argv)
         return 1; // nothing to cleanup
     }
 
-    // obj->rodata->debug = config.verbose; // TODO > verbosity
-
     err = rfc3330_bpf__load(obj);
     if (err)
     {
@@ -172,7 +214,7 @@ int main(int argc, char **argv)
         goto cleanup;
     }
 
-    DECLARE_LIBBPF_OPTS(bpf_tc_hook, hook, .ifindex = config.ifindex, .attach_point = BPF_TC_EGRESS);
+    DECLARE_LIBBPF_OPTS(bpf_tc_hook, hook, .ifindex = config.ifindex, .attach_point = config.attach_point);
     err = bpf_tc_hook_create(&hook);
     if (err)
     {
