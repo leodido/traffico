@@ -43,8 +43,23 @@ function main(target, components_target, banner)
     target:add("includedirs", gendir, { public = true })
     target:set("configdir", gendir)
 
-    local _, components = project.target(components_target):configfiles()
-    local num_components = table.getn(components)
+    local v = {}
+
+    local _, components, vars = project.target(components_target):configfiles()
+    local num_components = #components
+    v["PROGRAMS_COUNT"] = num_components + 1
+
+    local programs = {}
+    table.insert(programs, "0")
+    for _, v in ipairs(vars) do
+        table.insert(programs, v.variables.PROGNAME)
+        utils.dump(v.variables)
+    end
+    table.sort(programs)
+    v["PROGRAMS_AS_SYMBOLS"] = 'program_' .. table.concat(programs, ", program_")
+    v["PROGRAMS_AS_STRINGS"] = '"' .. table.concat(programs, '", "') .. '"'
+    table.remove(programs, 1)
+    v["PROGRAMS_DESCRIPTION"] = '"  - ' .. table.concat(programs, '\\n  - ') .. '"'
 
     local content = ""
     for i, c in ipairs(components) do
@@ -56,7 +71,8 @@ function main(target, components_target, banner)
             content = content .. "\n\n"
         end
     end
+    v["API"] = content
 
     local configfile = path.join(target:scriptdir(), "api.h.in")
-    target:add("configfiles", configfile, { variables = { API = content } })
+    target:add("configfiles", configfile, { variables = v })
 end
