@@ -1,0 +1,17 @@
+#ifndef TRAFFICO_API_H
+#define TRAFFICO_API_H
+
+#include <net/if.h>
+#include <bpf/libbpf.h>
+
+struct args
+{
+    bool verbose;
+    char ifname[IF_NAMESIZE];
+    int ifindex;
+    enum bpf_tc_attach_point attach_point;
+};
+
+${API}
+
+#endif // TRAFFICO_API_H
