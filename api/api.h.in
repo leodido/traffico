@@ -4,14 +4,27 @@
 #include <net/if.h>
 #include <bpf/libbpf.h>
 
+#define TOOL_NAME "traffico"
+
+#define NUM_PROGRAMS ${PROGRAMS_COUNT}
+#define PROGRAMS_DESCRIPTION ${PROGRAMS_DESCRIPTION}
+
+enum program {${PROGRAMS_AS_SYMBOLS}};
+
+typedef enum program program_t;
+
+static const char *programs_name[NUM_PROGRAMS] = {${PROGRAMS_AS_STRINGS}};
+
 struct args
 {
     bool verbose;
     char ifname[IF_NAMESIZE];
     int ifindex;
     enum bpf_tc_attach_point attach_point;
-    
+
     bool cleanup_on_exit;
+    program_t program;
+    char *program_arg;
 };
 
 typedef int (*after_attach_fn_t)(struct bpf_tc_hook hook, struct bpf_tc_opts opts);
