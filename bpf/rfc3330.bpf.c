@@ -43,22 +43,26 @@ int rfc3330(struct __sk_buff *skb)
     bpf_printk("DADDR: %d", ip_header->daddr);
     bpf_printk("SADDR: %d", ip_header->saddr);
 
-    if (/*2.1.1.1*/ 33620225 == ip_header->daddr)
-    {
-        bpf_printk("classifier: [iph] destination address is 1.1.1.2 ...");
-        bpf_printk("host byte order: %d", bpf_ntohl(ip_header->daddr));
-        return TC_ACT_SHOT;
-    }
+    // check if ip_header->daddr is in netmask 255.255.255.0
 
-    if (172 == (ip_header->daddr >> 24 & 0xFF))
+    u32 netmask = bpf_htonl(0xFF000000);
+    u32 netip = bpf_htonl(16777216);
+
+    bpf_printk("NETMASK: %d", netmask);
+    bpf_printk("BASEADDR: %d", netip);
+
+    bpf_printk("daddr and netmask: %d", (ip_header->daddr & netmask));
+    bpf_printk("netip and netmask: %d", (netip & netmask));
+
+    if ((ip_header->daddr & netmask) == (netip & netmask))
     {
-        bpf_printk("classifier: [iph] destination address ends with 172 ...");
-        if (16 == (ip_header->daddr >> 16 & 0xFF))
-        {
-            bpf_printk("classifier: [iph] destination address ends with 16.172 ...");
-        }
+        bpf_printk("daddr is on a blocked subnet, shot");
         return TC_ACT_SHOT;
     }
 
     return TC_ACT_OK;
 }
+
+// [
+//     {"1.0.0.0", "255.255.255.0"}
+// ]
