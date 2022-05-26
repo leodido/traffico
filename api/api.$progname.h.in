@@ -33,7 +33,7 @@ int attach_${PROGNAME}(struct args *conf, after_attach_fn_t cb)
             fprintf(stderr, "traffico: fail: creating the qdisc: %s\n", buf);
             goto destroy_${PROGNAME};
         }
-        fprintf(stderr, "traffico: hook already existing, trying to re-use it\n");
+        fprintf(stdout, "traffico: hook already existing, trying to re-use it\n");
     }
 
     // Attach the TC eBPF program to the qdisc
@@ -46,26 +46,31 @@ int attach_${PROGNAME}(struct args *conf, after_attach_fn_t cb)
         fprintf(stderr, "traffico: fail: attaching the TC eBPF program: %s\n", buf);
         goto cleanup_${PROGNAME};
     }
-    fprintf(stderr, "traffico: opts: handle: 0x%x\n", opts.handle);
-    fprintf(stderr, "traffico: opts: priority: %d\n", opts.priority);
-    fprintf(stderr, "traffico: opts: program ID: %d\n", opts.prog_id);
+    fprintf(stdout, "traffico: opts: handle: 0x%x\n", opts.handle);
+    fprintf(stdout, "traffico: opts: priority: %d\n", opts.priority);
+    fprintf(stdout, "traffico: opts: program ID: %d\n", opts.prog_id);
 
     err = cb(hook, opts);
 
 cleanup_${PROGNAME}:
-    // Force the cleanup of the qdisc as well
-    hook.attach_point |= BPF_TC_INGRESS;
-    err = bpf_tc_hook_destroy(&hook);
-    if (err)
+    if (conf->cleanup_on_exit)
     {
-        libbpf_strerror(err, buf, sizeof(buf));
-        fprintf(stderr, "traffico: fail: destroying the qdisc: %s\n", buf);
+        // Force the cleanup of the qdisc as well
+        hook.attach_point |= BPF_TC_INGRESS;
+        err = bpf_tc_hook_destroy(&hook);
+        if (err)
+        {
+            libbpf_strerror(err, buf, sizeof(buf));
+            fprintf(stderr, "traffico: fail: destroying the qdisc: %s\n", buf);
+        }
+        fprintf(stdout, "traffico: done: destroying the qdisc\n");
     }
-    fprintf(stderr, "traffico: done: destroying the qdisc\n");
 
 destroy_${PROGNAME}:
-
-    ${PROGNAME}_bpf__destroy(obj);
+    if (conf->cleanup_on_exit)
+    {
+        ${PROGNAME}_bpf__destroy(obj);
+    }
 
     return err < 0 ? -err : err;
 }

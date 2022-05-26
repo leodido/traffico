@@ -10,6 +10,8 @@ struct args
     char ifname[IF_NAMESIZE];
     int ifindex;
     enum bpf_tc_attach_point attach_point;
+    
+    bool cleanup_on_exit;
 };
 
 typedef int (*after_attach_fn_t)(struct bpf_tc_hook hook, struct bpf_tc_opts opts);

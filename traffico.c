@@ -194,6 +194,7 @@ int main(int argc, char **argv)
     // CLI
     struct args config = {
         .verbose = false, // Must set verbosity before the parsing starts
+        .cleanup_on_exit = true,
     };
     err = argp_parse(&argp, argc, argv, ARGP_IN_ORDER, NULL, &config);
     if (err)
@@ -212,5 +213,6 @@ int main(int argc, char **argv)
     libbpf_set_strict_mode(LIBBPF_STRICT_ALL);
     libbpf_set_print(libbpf_print_fn);
 
+    // Execute
     return attach_rfc3330(&config, &run);
 }
