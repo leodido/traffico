@@ -60,5 +60,5 @@ int rfc3330(struct __sk_buff *skb)
         return TC_ACT_SHOT;
     }
 
-    return 0;
+    return TC_ACT_OK;
 }
