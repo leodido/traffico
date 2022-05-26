@@ -6,7 +6,7 @@
 #include <argp.h>
 #include <bpf/libbpf.h>
 
-#include "traffico.skel.h"
+#include "rfc3330.skel.h"
 
 const char *argp_program_version = "0.0";
 const char *argp_program_bug_address = "https://github.com/leodido/traffico/issues";
@@ -155,8 +155,8 @@ int main(int argc, char **argv)
     libbpf_set_print(libbpf_print_fn);
 
     // Skeleton
-    struct traffico_bpf *obj = NULL;
-    obj = traffico_bpf__open();
+    struct rfc3330_bpf *obj = NULL;
+    obj = rfc3330_bpf__open();
     if (!obj)
     {
         fprintf(stderr, "traffico: failed to open the eBPF skeleton\n");
@@ -165,7 +165,7 @@ int main(int argc, char **argv)
 
     // obj->rodata->debug = config.verbose; // TODO > verbosity
 
-    err = traffico_bpf__load(obj);
+    err = rfc3330_bpf__load(obj);
     if (err)
     {
         fprintf(stderr, "traffico: failed to load the eBPF skeleton\n");
@@ -187,7 +187,7 @@ int main(int argc, char **argv)
     }
 
     // Attach the TC eBPF program to the qdisc
-    int fd = bpf_program__fd(obj->progs.traffico); // TODO > make configurable from arguments
+    int fd = bpf_program__fd(obj->progs.rfc3330); // TODO > make configurable from arguments
     DECLARE_LIBBPF_OPTS(bpf_tc_opts, opts, .prog_fd = fd, .flags = BPF_TC_F_REPLACE);
     err = bpf_tc_attach(&hook, &opts);
     if (err)
@@ -232,7 +232,7 @@ cleanup:
     }
     fprintf(stdout, "traffico: success destroying the eBPF hook\n");
 
-    traffico_bpf__destroy(obj);
+    rfc3330_bpf__destroy(obj);
 
     return err < 0 ? -err : err;
 }
