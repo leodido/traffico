@@ -1,0 +1,53 @@
+#include "${PROGNAME}.skel.h"
+
+int attach_${PROGNAME}(struct args *conf, after_attach_fn cb)
+{
+    int err;
+    char buf[100];
+    buf[sizeof(buf) - 1] = '\0';
+
+    // Skeleton
+    struct ${PROGNAME}_bpf *obj = NULL;
+    obj = ${PROGNAME}_bpf__open();
+    if (!obj)
+    {
+        fprintf(stderr, "traffico: failed to open the eBPF skeleton\n");
+        return 1;
+    }
+    err = ${PROGNAME}_bpf__load(obj);
+    if (err)
+    {
+        fprintf(stderr, "traffico: failed to load the eBPF skeleton\n");
+        return 1;
+    }
+
+    DECLARE_LIBBPF_OPTS(bpf_tc_hook, hook, .ifindex = conf->ifindex, .attach_point = conf->attach_point);
+    err = bpf_tc_hook_create(&hook);
+    if (err)
+    {
+        // Moving on in case the hook file already exists // TODO > make configurable from arguments
+        if (err != -17)
+        {
+            libbpf_strerror(err, buf, sizeof(buf));
+            fprintf(stderr, "traffico: failed to create the qdisc: %s\n", buf);
+            return 1;
+        }
+        fprintf(stderr, "traffico: hook already existing, trying to re-use it\n");
+    }
+
+    // Attach the TC eBPF program to the qdisc
+    int fd = bpf_program__fd(obj->progs.${PROGNAME});
+    DECLARE_LIBBPF_OPTS(bpf_tc_opts, opts, .prog_fd = fd, .flags = BPF_TC_F_REPLACE);
+    err = bpf_tc_attach(&hook, &opts);
+    if (err)
+    {
+        libbpf_strerror(err, buf, sizeof(buf));
+        fprintf(stderr, "traffico: failed to attach the TC eBPF program: %s\n", buf);
+        return 1;
+    }
+    fprintf(stderr, "traffico: filter handle: 0x%x\n", opts.handle);
+    fprintf(stderr, "traffico: filter priority: %d\n", opts.priority);
+    fprintf(stderr, "traffico: filter program ID: %d\n", opts.prog_id);
+
+    return cb(hook, opts);
+}
