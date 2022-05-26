@@ -8,37 +8,40 @@
 
 #include "api.h"
 
-#define CLI_NAME "traffico"
-const char *argp_program_version = CLI_NAME " 0.0";
+const char *argp_program_version = TOOL_NAME " 0.0";
 const char *argp_program_bug_address = "https://github.com/leodido/traffico/issues";
 error_t argp_err_exit_status = 1;
 const char argp_program_doc[] =
     "\n"
-    "Isolate your host the eBPF way.\n";
+    "Isolate your host the eBPF way.\n"
+    "\v"
+    "  PROGRAMS\n" PROGRAMS_DESCRIPTION;
 
 const char OPT_VERBOSE_LONG[] = "verbose";
 const char OPT_VERBOSE_KEY = 'v';
 const char OPT_IFNAME_LONG[] = "ifname";
 const char OPT_IFNAME_KEY = 'i';
-const char OPT_IFNAME_ARG[] = "<ifname>";
+const char OPT_IFNAME_ARG[] = "IFNAME";
 const char OPT_ATTACH_LONG[] = "at";
 const char OPT_ATTACH_KEY = 0x80;
-const char OPT_ATTACH_ARG[] = "ingress|egress";
+const char OPT_ATTACH_ARG[] = "INGRESS|EGRESS";
 
 const struct argp_option argp_opts[] = {
 
+    {"OPTIONS", 0, 0, OPTION_DOC, 0, 0},
     {OPT_VERBOSE_LONG, OPT_VERBOSE_KEY, NULL, 0, "Verbose debug output", -1},
     {OPT_IFNAME_LONG, OPT_IFNAME_KEY, OPT_IFNAME_ARG, 0, "Interface to which to attach the filter\n(defaults to the default gateway interface)", 1},
     {OPT_ATTACH_LONG, OPT_ATTACH_KEY, OPT_ATTACH_ARG, 0, "Where to attach the filter (defaults to egress)", 1},
-    {"", 0, 0, OPTION_DOC, 0, 0}, // Spacer
-    {0}                           // .
+    {"", 0, 0, OPTION_DOC, 0, 0},
+    {0} // .
 
 };
 
-static error_t parse_arg(int key, char *arg, struct argp_state *state)
+static error_t parse_cli(int key, char *arg, struct argp_state *state)
 {
     struct args *config = state->input;
     int ifindex;
+    int p;
     switch (key)
     {
 
@@ -76,6 +79,32 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
         }
         break;
 
+    // Arguments
+    case ARGP_KEY_ARG:
+        assert(arg);
+        for (p = 0; p < NUM_PROGRAMS; p++)
+        {
+            if (strcasecmp(arg, programs_name[p]) == 0)
+            {
+                config->program = (program_t)p;
+                break;
+            }
+        }
+        config->program_arg = arg;
+        break;
+
+    case ARGP_KEY_END:
+        if (state->arg_num == 0)
+        {
+            fprintf(state->err_stream, "%s: program name is mandatory\n\n", state->name);
+            argp_state_help(state, state->err_stream, ARGP_HELP_STD_HELP | ARGP_HELP_EXIT_ERR);
+        }
+        if (config->program == program_0)
+        {
+            argp_error(state, "argument '%s' is not a " TOOL_NAME " program", config->program_arg);
+        }
+        break;
+
     // Final settings, validations
     case ARGP_KEY_FINI:
         // Fallback to the default gateway interface by default
@@ -98,7 +127,8 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 
 static const struct argp argp = {
     .options = argp_opts,
-    .parser = parse_arg,
+    .parser = parse_cli,
+    .args_doc = "PROGRAM",
     .doc = argp_program_doc,
 };
 
@@ -157,7 +187,7 @@ static int libbpf_print_fn(enum libbpf_print_level level, const char *format, va
     return vfprintf(stderr, format, args);
 }
 
-int run(struct bpf_tc_hook hook, struct bpf_tc_opts opts)
+int await(struct bpf_tc_hook hook, struct bpf_tc_opts opts)
 {
     // Block until user signal
     while (!g_stop)
@@ -165,7 +195,7 @@ int run(struct bpf_tc_hook hook, struct bpf_tc_opts opts)
         fprintf(stderr, ".");
         sleep(1);
     }
-    fprintf(stderr, "\n");
+    fprintf(stdout, "\n");
 
     // Detach the TC hook
     int err;
@@ -214,5 +244,5 @@ int main(int argc, char **argv)
     libbpf_set_print(libbpf_print_fn);
 
     // Execute
-    return attach_rfc3330(&config, &run);
+    return attach_rfc3330(&config, &await);
 }
