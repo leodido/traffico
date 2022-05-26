@@ -1,6 +1,6 @@
 #include "${PROGNAME}.skel.h"
 
-int attach_${PROGNAME}(struct args *conf, after_attach_fn cb)
+int attach_${PROGNAME}(struct args *conf, after_attach_fn_t cb)
 {
     int err;
     char buf[100];
@@ -11,26 +11,27 @@ int attach_${PROGNAME}(struct args *conf, after_attach_fn cb)
     obj = ${PROGNAME}_bpf__open();
     if (!obj)
     {
-        fprintf(stderr, "traffico: failed to open the eBPF skeleton\n");
+        fprintf(stderr, "traffico: fail: opening the eBPF skeleton\n");
         return 1;
     }
     err = ${PROGNAME}_bpf__load(obj);
     if (err)
     {
-        fprintf(stderr, "traffico: failed to load the eBPF skeleton\n");
-        return 1;
+        fprintf(stderr, "traffico: fail: loading the eBPF skeleton\n");
+        goto destroy_${PROGNAME};
     }
 
     DECLARE_LIBBPF_OPTS(bpf_tc_hook, hook, .ifindex = conf->ifindex, .attach_point = conf->attach_point);
     err = bpf_tc_hook_create(&hook);
     if (err)
     {
-        // Moving on in case the hook file already exists // TODO > make configurable from arguments
-        if (err != -17)
+        // Moving on in case the hook file already exists
+        // TODO ? make this behavior configurable from arguments
+        if (err != -EEXIST)
         {
             libbpf_strerror(err, buf, sizeof(buf));
-            fprintf(stderr, "traffico: failed to create the qdisc: %s\n", buf);
-            return 1;
+            fprintf(stderr, "traffico: fail: creating the qdisc: %s\n", buf);
+            goto destroy_${PROGNAME};
         }
         fprintf(stderr, "traffico: hook already existing, trying to re-use it\n");
     }
@@ -42,12 +43,29 @@ int attach_${PROGNAME}(struct args *conf, after_attach_fn cb)
     if (err)
     {
         libbpf_strerror(err, buf, sizeof(buf));
-        fprintf(stderr, "traffico: failed to attach the TC eBPF program: %s\n", buf);
-        return 1;
+        fprintf(stderr, "traffico: fail: attaching the TC eBPF program: %s\n", buf);
+        goto cleanup_${PROGNAME};
     }
-    fprintf(stderr, "traffico: filter handle: 0x%x\n", opts.handle);
-    fprintf(stderr, "traffico: filter priority: %d\n", opts.priority);
-    fprintf(stderr, "traffico: filter program ID: %d\n", opts.prog_id);
+    fprintf(stderr, "traffico: opts: handle: 0x%x\n", opts.handle);
+    fprintf(stderr, "traffico: opts: priority: %d\n", opts.priority);
+    fprintf(stderr, "traffico: opts: program ID: %d\n", opts.prog_id);
 
-    return cb(hook, opts);
+    err = cb(hook, opts);
+
+cleanup_${PROGNAME}:
+    // Force the cleanup of the qdisc as well
+    hook.attach_point |= BPF_TC_INGRESS;
+    err = bpf_tc_hook_destroy(&hook);
+    if (err)
+    {
+        libbpf_strerror(err, buf, sizeof(buf));
+        fprintf(stderr, "traffico: fail: destroying the qdisc: %s\n", buf);
+    }
+    fprintf(stderr, "traffico: done: destroying the qdisc\n");
+
+destroy_${PROGNAME}:
+
+    ${PROGNAME}_bpf__destroy(obj);
+
+    return err < 0 ? -err : err;
 }
