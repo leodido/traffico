@@ -39,11 +39,20 @@ int rfc3330(struct __sk_buff *skb)
         return TC_ACT_OK;
     }
 
-    if (/*1.1.1.2*/ 33620225 == ip_header->daddr)
+    if (/*2.1.1.1*/ 33620225 == ip_header->daddr)
     {
         bpf_printk("classifier: [iph] destination address is 1.1.1.2 ...");
         bpf_printk("host byte order: %d", bpf_ntohl(ip_header->daddr));
         return TC_ACT_OK;
+    }
+
+    if (172 == (ip_header->daddr >> 24 & 0xFF))
+    {
+        bpf_printk("classifier: [iph] destination address ends with 172 ...");
+        if (16 == (ip_header->daddr >> 16 & 0xFF))
+        {
+            bpf_printk("classifier: [iph] destination address ends with 16.172 ...");
+        }
     }
 
     return 0;
