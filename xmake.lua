@@ -10,12 +10,14 @@ add_rules("mode.release", "mode.debug")
 target("traffico")
     set_kind("binary")
     set_default(true)
-    includes("bpf")
-    add_deps("bpf")
+    includes("api")
+    add_deps("api")
     add_packages("libbpf")
     add_files({"traffico.c"}, { languages = { "c11" }})
 
--- main
-target("main")
+-- traffico-cni
+target("traffico-cni")
     set_kind("binary")
+    includes("api")
+    add_deps("api")
     add_files({"main.c"}, { langguages = { "c11" }})
