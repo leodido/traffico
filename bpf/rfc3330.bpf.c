@@ -7,8 +7,8 @@ char LICENSE[] SEC("license") = "Dual BSD/GPL";
 
 struct subnet
 {
-    u32 subnet;
-    u32 netmask;
+    __u32 subnet;
+    __u32 netmask;
 };
 
 static struct subnet blocked_subnets[] = {
@@ -33,6 +33,8 @@ static struct subnet blocked_subnets[] = {
         .netmask = 0xFFF00000, // 255.240.0.0
     },
 };
+
+const volatile __u32 exception = 0;
 
 SEC("tc")
 int rfc3330(struct __sk_buff *skb)
@@ -63,14 +65,30 @@ int rfc3330(struct __sk_buff *skb)
         return TC_ACT_OK;
     }
 
+    if (ip_header->protocol == IPPROTO_ICMP)
+    {
+        bpf_printk("classifier: [iph] is icmp, shot");
+        return TC_ACT_SHOT;
+    }
+
     if (ip_is_fragment(skb, l3_offset))
     {
         bpf_printk("classifier: [iph] is fragment: continue");
         return TC_ACT_OK;
     }
 
-    bpf_printk("DADDR: %d", ip_header->daddr);
-    bpf_printk("SADDR: %d", ip_header->saddr);
+    struct tcphdr *tcp = (struct tcphdr *)(data + l4_offset);
+    const int l7_offset = l4_offset + sizeof(*tcp);
+
+    if (data + l7_offset > data_end)
+    {
+        bpf_printk("classifier: [tcph] size lenght check hit: continue");
+        return TC_ACT_OK;
+    }
+
+    bpf_printk("daddr: %d", ip_header->daddr);
+    bpf_printk("saddr: %d", ip_header->saddr);
+    bpf_printk("exception: %d", bpf_htonl(exception));
 
     for (int i = 0; i < sizeof(blocked_subnets) / sizeof(struct subnet); i++)
     {
@@ -79,6 +97,16 @@ int rfc3330(struct __sk_buff *skb)
 
         if ((ip_header->daddr & netmask) == (subnetip & netmask))
         {
+            if (bpf_htonl(exception) == ip_header->daddr)
+            {
+
+                if (bpf_ntohs(tcp->source) == 22)
+                {
+                    bpf_printk("even though it matched, daddr is the exception so we will allow incoming ssh connections from it");
+                    return TC_ACT_OK;
+                }
+            }
+
             bpf_printk("daddr is on a blocked subnet, shot");
             return TC_ACT_SHOT;
         }
