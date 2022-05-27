@@ -244,5 +244,6 @@ int main(int argc, char **argv)
     libbpf_set_print(libbpf_print_fn);
 
     // Execute
-    return attach_rfc3330(&config, &await);
+    fprintf(stdout, "traffico: prog: %s\n", programs_name[config.program]);
+    return attach(&config, &await);
 }
