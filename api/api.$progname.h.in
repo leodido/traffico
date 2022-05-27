@@ -1,6 +1,6 @@
 #include "${PROGNAME}.skel.h"
 
-int attach_${PROGNAME}(struct args *conf, after_attach_fn_t cb)
+int ${OPERATION}${PROGNAME}(struct args *conf, after_attach_fn_t cb)
 {
     int err;
     char buf[100];
