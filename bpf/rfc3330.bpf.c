@@ -5,6 +5,35 @@
 
 char LICENSE[] SEC("license") = "Dual BSD/GPL";
 
+struct subnet
+{
+    u32 subnet;
+    u32 netmask;
+};
+
+static struct subnet blocked_subnets[] = {
+    // 10.0.0.0/8
+    {
+        .subnet = 0x0A000000,  // 10.0.0.0
+        .netmask = 0xFF000000, // 255.0.0.0
+    },
+    // 169.254.0.0/16
+    {
+        .subnet = 0xA9FE0000,  // 169.254.0.0
+        .netmask = 0xFFFF0000, // 255.255.0.0
+    },
+    // 172.16.0.0/12
+    {
+        .subnet = 0xAC100000,  // 172.16.0.0
+        .netmask = 0xFFF00000, // 255.240.0.0
+    },
+    //  192.168.0.0/16
+    {
+        .subnet = 0xC0A80000,  // 192.168.0.0
+        .netmask = 0xFFF00000, // 255.240.0.0
+    },
+};
+
 SEC("tc")
 int rfc3330(struct __sk_buff *skb)
 {
@@ -43,26 +72,17 @@ int rfc3330(struct __sk_buff *skb)
     bpf_printk("DADDR: %d", ip_header->daddr);
     bpf_printk("SADDR: %d", ip_header->saddr);
 
-    // check if ip_header->daddr is in netmask 255.255.255.0
-
-    u32 netmask = bpf_htonl(0xFF000000);
-    u32 netip = bpf_htonl(16777216);
-
-    bpf_printk("NETMASK: %d", netmask);
-    bpf_printk("BASEADDR: %d", netip);
-
-    bpf_printk("daddr and netmask: %d", (ip_header->daddr & netmask));
-    bpf_printk("netip and netmask: %d", (netip & netmask));
-
-    if ((ip_header->daddr & netmask) == (netip & netmask))
+    for (int i = 0; i < sizeof(blocked_subnets) / sizeof(struct subnet); i++)
     {
-        bpf_printk("daddr is on a blocked subnet, shot");
-        return TC_ACT_SHOT;
+        u32 netmask = bpf_htonl(blocked_subnets[i].netmask);
+        u32 subnetip = bpf_htonl(blocked_subnets[i].subnet);
+
+        if ((ip_header->daddr & netmask) == (subnetip & netmask))
+        {
+            bpf_printk("daddr is on a blocked subnet, shot");
+            return TC_ACT_SHOT;
+        }
     }
 
     return TC_ACT_OK;
 }
-
-// [
-//     {"1.0.0.0", "255.255.255.0"}
-// ]

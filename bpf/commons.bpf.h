@@ -1,3 +1,5 @@
+#ifndef TRAFFICO_BPF_COMMONS_H
+#define TRAFFICO_BPF_COMMONS_H
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_core_read.h>
 
@@ -60,3 +62,5 @@ struct trace_event_raw_bpf_trace_printk___x
     }                        \
     while (0)
 #endif
+
+#endif // TRAFFICO_BPF_COMMONS_H
