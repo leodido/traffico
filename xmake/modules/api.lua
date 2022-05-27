@@ -30,7 +30,7 @@ function gen(target, source_target)
         local tempconf = path.join(os.tmpdir(), confname)
         os.tryrm(tempconf)
         os.cp(configfile_template_path, tempconf)
-        target:add("configfiles", tempconf, { variables = { PROGNAME = progname } })
+        target:add("configfiles", tempconf, { variables = { PROGNAME = progname, OPERATION = "attach__" } })
     end
 end
 
@@ -49,15 +49,18 @@ function main(target, components_target, banner)
     local num_components = #components
     v["PROGRAMS_COUNT"] = num_components + 1
 
+    local op = vars[1].variables.OPERATION
+    v["OPERATION"] = op
+    
     local programs = {}
     table.insert(programs, "0")
     for _, v in ipairs(vars) do
         table.insert(programs, v.variables.PROGNAME)
-        utils.dump(v.variables)
     end
     table.sort(programs)
     v["PROGRAMS_AS_SYMBOLS"] = 'program_' .. table.concat(programs, ", program_")
     v["PROGRAMS_AS_STRINGS"] = '"' .. table.concat(programs, '", "') .. '"'
+    v["PROGRAMS_OPS_AS_SYMBOLS"] = op .. table.concat(programs, ', ' .. op)
     table.remove(programs, 1)
     v["PROGRAMS_DESCRIPTION"] = '"  - ' .. table.concat(programs, '\\n  - ') .. '"'
 
