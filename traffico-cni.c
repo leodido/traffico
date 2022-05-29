@@ -78,6 +78,134 @@ int obj_cb_fn(void *obj)
     return 0;
 }
 
+int add_command()
+{
+    char *stdin_text;
+    if (get_stdin(&stdin_text) != 0)
+    {
+        fprintf(stderr, "Error reading stdin\n");
+        return -1;
+    }
+
+    cJSON *jsonobj = cJSON_Parse(stdin_text);
+
+    if (jsonobj == NULL)
+    {
+        fprintf(stderr, "Error parsing JSON\n");
+        return -1;
+    }
+
+    const cJSON *prevResult = NULL;
+    prevResult = cJSON_GetObjectItemCaseSensitive(jsonobj, "prevResult");
+
+    char *string = NULL;
+    string = cJSON_Print(prevResult);
+    if (string == NULL)
+    {
+        fprintf(stderr, "Failed to print prevResult.\n");
+        return -1;
+    }
+
+    printf("%s\n", string);
+
+    const cJSON *interfaces = NULL;
+    interfaces = cJSON_GetObjectItemCaseSensitive(prevResult, "interfaces");
+
+    if (interfaces == NULL)
+    {
+        fprintf(stderr, "Failed to get interfaces.\n");
+        return -1;
+    }
+
+    const cJSON *interface = NULL;
+    interface = cJSON_GetArrayItem(interfaces, 0);
+
+    if (interface == NULL)
+    {
+        fprintf(stderr, "Failed to get interface.\n");
+        return -1;
+    }
+
+    const cJSON *ifname = NULL;
+    ifname = cJSON_GetObjectItemCaseSensitive(interface, "name");
+
+    if (!cJSON_IsString(ifname))
+    {
+        fprintf(stderr, "Failed to get ifname.\n");
+        return -1;
+    }
+
+    fprintf(stderr, "ifname: %s\n", ifname->valuestring);
+    int ifindex = if_nametoindex(ifname->valuestring);
+
+    if (ifindex == 0)
+    {
+        fprintf(stderr, "Failed to retrieve ifindex: %s\n", strerror(errno));
+        return -1;
+    }
+
+    struct args config = {
+        .verbose = false,
+        .cleanup_on_exit = false,
+    };
+    char wantedprogram[] = "rfc3330"; // todo: make this configurable
+
+    const cJSON *ips = NULL;
+    ips = cJSON_GetObjectItemCaseSensitive(prevResult, "ips");
+
+    if (ips == NULL)
+    {
+        fprintf(stderr, "Failed to get ips.\n");
+        return -1;
+    }
+
+    const cJSON *ip = NULL;
+    ip = cJSON_GetArrayItem(ips, 0);
+
+    if (ip == NULL)
+    {
+        fprintf(stderr, "Failed to get ip.\n");
+        return -1;
+    }
+
+    const cJSON *gateway = NULL;
+    gateway = cJSON_GetObjectItemCaseSensitive(ip, "gateway");
+
+    if (gateway == NULL)
+    {
+        fprintf(stderr, "Failed to get gateway.\n");
+        return -1;
+    }
+
+    unsigned int exception_ip = string_to_ip_int(gateway->valuestring);
+    if (exception_ip == -1)
+    {
+        fprintf(stderr, "Failed to parse gateway IP.\n");
+        return -1;
+    }
+    g_exception = exception_ip;
+
+    int p;
+    for (p = 0; p < NUM_PROGRAMS; p++)
+    {
+        if (strcasecmp(wantedprogram, programs_name[p]) == 0)
+        {
+            config.program = (program_t)p;
+            break;
+        }
+    }
+    if (config.program == NULL)
+    {
+        fprintf(stderr, "unknown program with name: %s\n", wantedprogram);
+        return -1;
+    }
+    config.attach_point = BPF_TC_INGRESS; // todo: make this configurable
+    config.ifindex = ifindex;
+    strncpy(config.ifname, ifname->valuestring, strlen(ifname->valuestring));
+
+    return attach(&config, after_attach_fn, obj_cb_fn);
+}
+
 int plugin_main()
 {
     char *cni_command = getenv("CNI_COMMAND");
@@ -89,135 +217,9 @@ int plugin_main()
 
     if (strcmp(cni_command, "ADD") == 0)
     {
-        char *stdin_text;
-        if (get_stdin(&stdin_text) != 0)
-        {
-            fprintf(stderr, "Error reading stdin\n");
-            return -1;
-        }
-
-        cJSON *jsonobj = cJSON_Parse(stdin_text);
-
-        if (jsonobj == NULL)
-        {
-            fprintf(stderr, "Error parsing JSON\n");
-            return -1;
-        }
-
-        const cJSON *prevResult = NULL;
-        prevResult = cJSON_GetObjectItemCaseSensitive(jsonobj, "prevResult");
-
-        char *string = NULL;
-        string = cJSON_Print(prevResult);
-        if (string == NULL)
-        {
-            fprintf(stderr, "Failed to print prevResult.\n");
-            return -1;
-        }
-
-        printf("%s\n", string);
-
-        const cJSON *interfaces = NULL;
-        interfaces = cJSON_GetObjectItemCaseSensitive(prevResult, "interfaces");
-
-        if (interfaces == NULL)
-        {
-            fprintf(stderr, "Failed to get interfaces.\n");
-            return -1;
-        }
-
-        const cJSON *interface = NULL;
-        interface = cJSON_GetArrayItem(interfaces, 0);
-
-        if (interface == NULL)
-        {
-            fprintf(stderr, "Failed to get interface.\n");
-            return -1;
-        }
-
-        const cJSON *ifname = NULL;
-        ifname = cJSON_GetObjectItemCaseSensitive(interface, "name");
-
-        if (!cJSON_IsString(ifname))
-        {
-            fprintf(stderr, "Failed to get ifname.\n");
-            return -1;
-        }
-
-        fprintf(stderr, "ifname: %s\n", ifname->valuestring);
-        int ifindex = if_nametoindex(ifname->valuestring);
-
-        if (ifindex == 0)
-        {
-            fprintf(stderr, "Failed to retrieve ifindex: %s\n", strerror(errno));
-            return -1;
-        }
-
-        struct args config = {
-            .verbose = false,
-            .cleanup_on_exit = false,
-        };
-        char wantedprogram[] = "rfc3330";
-
-        const cJSON *ips = NULL;
-        ips = cJSON_GetObjectItemCaseSensitive(prevResult, "ips");
-
-        if (ips == NULL)
-        {
-            fprintf(stderr, "Failed to get ips.\n");
-            return -1;
-        }
-
-        const cJSON *ip = NULL;
-        ip = cJSON_GetArrayItem(ips, 0);
-
-        if (ip == NULL)
-        {
-            fprintf(stderr, "Failed to get ip.\n");
-            return -1;
-        }
-
-        const cJSON *gateway = NULL;
-        gateway = cJSON_GetObjectItemCaseSensitive(ip, "gateway");
-
-        if (gateway == NULL)
-        {
-            fprintf(stderr, "Failed to get gateway.\n");
-            return -1;
-        }
-
-        unsigned int exception_ip = string_to_ip_int(gateway->valuestring);
-        if (exception_ip == -1)
-        {
-            fprintf(stderr, "Failed to parse gateway IP.\n");
-            return -1;
-        }
-        g_exception = exception_ip;
-
-        int p;
-        for (p = 0; p < NUM_PROGRAMS; p++)
-        {
-            if (strcasecmp(wantedprogram, programs_name[p]) == 0)
-            {
-                config.program = (program_t)p;
-                break;
-            }
-        }
-        if (config.program == program_0)
-        {
-            fprintf(stderr, "unknown program with name: %s\n", wantedprogram);
-            return -1;
-        }
-        config.attach_point = BPF_TC_INGRESS;
-        config.ifindex = ifindex;
-        strncpy(config.ifname, ifname->valuestring, strlen(ifname->valuestring));
-
-        return attach(&config, after_attach_fn, obj_cb_fn);
+        return add_command();
     }
-    else if (strcmp(cni_command, "DEL") == 0)
-    {
-        return 0;
-    }
+
     else
     {
         return 0;
