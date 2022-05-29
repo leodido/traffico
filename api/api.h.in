@@ -31,9 +31,11 @@ struct args
     FILE *out_stream;
 };
 
+typedef int (*bpf_obj_fn_t)(void *obj);
+
 typedef int (*after_attach_fn_t)(struct bpf_tc_hook hook, struct bpf_tc_opts opts);
 
-typedef int (*attach_fn_t)(struct args *conf, after_attach_fn_t cb);
+typedef int (*attach_fn_t)(struct args *conf, after_attach_fn_t cb, bpf_obj_fn_t obj_cb);
 
 /// logging
 int print_log(FILE *f, bool verbosity, bool prefix, const char *fmt, va_list argptr)
@@ -76,7 +78,7 @@ int exit_after_attach(struct bpf_tc_hook hook, struct bpf_tc_opts opts)
 }
 
 /// non-existing programs
-int ${OPERATION}0(struct args *conf, after_attach_fn_t cb)
+int ${OPERATION}0(struct args *conf, after_attach_fn_t cb, bpf_obj_fn_t obj_cb)
 {
     return 1;
 }
@@ -86,13 +88,13 @@ ${API}
 /// dispatch
 attach_fn_t attach_fn[NUM_PROGRAMS] = { ${PROGRAMS_OPS_AS_SYMBOLS} };
 
-int attach(struct args *conf, after_attach_fn_t cb)
+int attach(struct args *conf, after_attach_fn_t cb, bpf_obj_fn_t obj_cb)
 {
     attach_fn_t fn = attach_fn[conf->program];
     if (fn) {
-        return fn(conf, cb);
+        return fn(conf, cb, obj_cb);
     }
-    return ${OPERATION}0(conf, cb);
+    return ${OPERATION}0(conf, cb, obj_cb);
 }
 
 
