@@ -65,10 +65,6 @@ unsigned int string_to_ip_int(const char *ip)
     return ret;
 }
 
-int after_attach_fn(struct bpf_tc_hook hook, struct bpf_tc_opts opts)
-{
-    return 0;
-}
 
 unsigned int g_exception = 0;
 int obj_cb_fn(void *obj)
@@ -203,7 +199,7 @@ int add_command()
     config.ifindex = ifindex;
     strncpy(config.ifname, ifname->valuestring, strlen(ifname->valuestring));
 
-    return attach(&config, after_attach_fn, obj_cb_fn);
+    return attach(&config, exit_after_attach, obj_cb_fn);
 }
 
 int plugin_main()
@@ -211,7 +207,7 @@ int plugin_main()
     char *cni_command = getenv("CNI_COMMAND");
     if (cni_command == NULL)
     {
-        printf("CNI_COMMAND is not set\n");
+        fprintf(stderr, "CNI_COMMAND is not set\n");
         return 1;
     }
 
