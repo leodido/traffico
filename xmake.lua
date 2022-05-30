@@ -1,6 +1,6 @@
 set_xmakever("2.6.1") -- Minimum version to compile BPF source correctly
 
--- repositories
+-- includes
 includes("xmake/repos.lua")
 
 -- rules
@@ -13,11 +13,27 @@ target("traffico")
     includes("api")
     add_deps("api")
     add_packages("libbpf")
-    add_files({"traffico.c"}, { languages = { "c11" }})
+    add_files({ "traffico.c" }, { languages = { "c11" }})
+target_end()
 
 -- traffico-cni
 target("traffico-cni")
     set_kind("binary")
     includes("api")
     add_deps("api")
-    add_files({"main.c"}, { langguages = { "c11" }})
+    add_files({ "main.c" }, { languages = { "c11" }})
+target_end()
+
+-- test
+add_requires("bats v1.7.0", { system = false })
+target("test")
+    set_kind("phony")
+    add_deps("traffico", "traffico-cni")
+    add_packages("bats")
+    on_run(function (target)
+        for _, name in ipairs(target:get("deps")) do
+            os.addenv("PATH", path.absolute(target:dep(name):targetdir()))
+        end
+        os.execv("bats", { "test/" })
+    end)
+target_end()
