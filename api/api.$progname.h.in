@@ -1,5 +1,6 @@
 #include "${PROGNAME}.skel.h"
 
+#include <errno.h>
 int ${OPERATION}${PROGNAME}(struct args *conf, after_attach_fn_t cb, bpf_obj_fn_t obj_cb)
 {
     int err;
@@ -27,7 +28,8 @@ int ${OPERATION}${PROGNAME}(struct args *conf, after_attach_fn_t cb, bpf_obj_fn_
     err = ${PROGNAME}_bpf__load(obj);
     if (err)
     {
-        log_err(conf, "fail: loading the eBPF skeleton\n");
+        libbpf_strerror(err, buf, sizeof(buf));
+        log_err(conf, "fail: loading the eBPF skeleton: %s\n", buf);
         goto destroy_${PROGNAME};
     }
 

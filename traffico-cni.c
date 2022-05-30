@@ -1,14 +1,49 @@
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <cjson/cJSON.h>
-
+#include <fcntl.h>
+#include <sched.h>
 #include <bpf/libbpf.h>
-
 #include <net/if.h>
 
-#include "rfc3330.skel.h"
-
 #include "api.h"
+
+#define RFC3330_PROGRAM_NAME "rfc3330"
+
+enum cni_error_codes
+{
+    CNI_INCOMPATIBLE = 1,
+    CNI_UNSUPPORTED_FIELD,
+    CNI_CONTAINER_NOT_EXISTING,
+    CNI_INVALID_ENV_VARS,
+    CNI_IO_FAILURE,
+    CNI_FAILED_DECODE_CONTENT,
+    CNI_INVALID_NETWORK_CONFIG,
+    CNI_TRY_AGAIN_LATER,
+};
+
+struct cni_error
+{
+    char *cni_version;
+    int code;
+    char *msg;
+    char *details;
+};
+
+void print_cni_error(struct cni_error *err)
+{
+    cJSON *error_obj = cJSON_CreateObject();
+    cJSON_AddStringToObject(error_obj, "cniVersion", err->cni_version);
+    cJSON_AddNumberToObject(error_obj, "code", err->code);
+    cJSON_AddStringToObject(error_obj, "msg", err->msg);
+    if (strlen(err->details) > 0)
+        cJSON_AddStringToObject(error_obj, "details", err->details);
+    else
+        cJSON_AddStringToObject(error_obj, "details", err->msg);
+
+    printf("%s\n", cJSON_Print(error_obj));
+}
 
 #define BUFFERSIZE 10
 int get_stdin(char **text)
@@ -65,9 +100,8 @@ unsigned int string_to_ip_int(const char *ip)
     return ret;
 }
 
-
 unsigned int g_exception = 0;
-int obj_cb_fn(void *obj)
+int rfc3330_cb_fn(void *obj)
 {
     struct rfc3330_bpf *rfc3330 = (struct rfc3330_bpf *)obj;
     rfc3330->rodata->exception = g_exception;
@@ -76,10 +110,26 @@ int obj_cb_fn(void *obj)
 
 int add_command()
 {
+    struct cni_error err;
+    err.cni_version = "1.0.0";
+    err.msg = "";
+    err.details = "";
+
+    bpf_obj_fn_t obj_fn = NULL;
+
+    struct args config = {
+        .verbose = false,
+        .cleanup_on_exit = false,
+    };
+
+    config.verbose = false;
+
     char *stdin_text;
     if (get_stdin(&stdin_text) != 0)
     {
-        fprintf(stderr, "Error reading stdin\n");
+        err.code = CNI_IO_FAILURE;
+        err.msg = "Error reading stdin";
+        print_cni_error(&err);
         return -1;
     }
 
@@ -87,29 +137,75 @@ int add_command()
 
     if (jsonobj == NULL)
     {
-        fprintf(stderr, "Error parsing JSON\n");
+        err.msg = "Error parsing JSON";
+        err.code = CNI_FAILED_DECODE_CONTENT;
+        print_cni_error(&err);
         return -1;
+    }
+
+    const cJSON *cniVersion = NULL;
+    cniVersion = cJSON_GetObjectItemCaseSensitive(jsonobj, "cniVersion");
+
+    if (cniVersion != NULL && cJSON_IsString(cniVersion))
+    {
+        err.cni_version = cniVersion->valuestring;
+    }
+
+    const cJSON *programName = NULL;
+    programName = cJSON_GetObjectItemCaseSensitive(jsonobj, "program");
+    char *programName_str = NULL;
+
+    if (programName != NULL && cJSON_IsString(programName))
+    {
+        programName_str = programName->valuestring;
+    }
+    else
+    {
+        programName_str = RFC3330_PROGRAM_NAME;
+    }
+
+    if (strcmp(programName_str, RFC3330_PROGRAM_NAME) == 0)
+    {
+        obj_fn = rfc3330_cb_fn;
+    }
+
+    const cJSON *attachPoint = NULL;
+    attachPoint = cJSON_GetObjectItemCaseSensitive(jsonobj, "attachPoint");
+    char *attachPoint_str = "EGRESS";
+
+    if (attachPoint != NULL && cJSON_IsString(attachPoint))
+    {
+        attachPoint_str = attachPoint->valuestring;
+    }
+
+    if (strcasecmp(attachPoint_str, "INGRESS") == 0)
+    {
+        config.attach_point = BPF_TC_INGRESS;
+    }
+    else if (strcasecmp(attachPoint_str, "EGRESS") == 0)
+    {
+        config.attach_point = BPF_TC_EGRESS;
     }
 
     const cJSON *prevResult = NULL;
     prevResult = cJSON_GetObjectItemCaseSensitive(jsonobj, "prevResult");
 
-    char *string = NULL;
-    string = cJSON_Print(prevResult);
-    if (string == NULL)
+    if (prevResult == NULL)
     {
-        fprintf(stderr, "Failed to print prevResult.\n");
+        err.code = CNI_INVALID_NETWORK_CONFIG;
+        err.msg = "Could not find prevResult in JSON";
+        print_cni_error(&err);
         return -1;
     }
-
-    printf("%s\n", string);
 
     const cJSON *interfaces = NULL;
     interfaces = cJSON_GetObjectItemCaseSensitive(prevResult, "interfaces");
 
     if (interfaces == NULL)
     {
-        fprintf(stderr, "Failed to get interfaces.\n");
+        err.code = CNI_INVALID_NETWORK_CONFIG;
+        err.msg = "Failed to get interfaces";
+        print_cni_error(&err);
         return -1;
     }
 
@@ -118,7 +214,9 @@ int add_command()
 
     if (interface == NULL)
     {
-        fprintf(stderr, "Failed to get interface.\n");
+        err.code = CNI_INVALID_NETWORK_CONFIG;
+        err.msg = "Failed to get default interface";
+        print_cni_error(&err);
         return -1;
     }
 
@@ -127,31 +225,30 @@ int add_command()
 
     if (!cJSON_IsString(ifname))
     {
-        fprintf(stderr, "Failed to get ifname.\n");
+        err.code = CNI_INVALID_NETWORK_CONFIG;
+        err.msg = "Failed to get ifname";
+        print_cni_error(&err);
         return -1;
     }
 
-    fprintf(stderr, "ifname: %s\n", ifname->valuestring);
     int ifindex = if_nametoindex(ifname->valuestring);
 
     if (ifindex == 0)
     {
-        fprintf(stderr, "Failed to retrieve ifindex: %s\n", strerror(errno));
+        err.code = CNI_INVALID_NETWORK_CONFIG;
+        err.msg = "Failed to retrieve ifindex";
+        print_cni_error(&err);
         return -1;
     }
-
-    struct args config = {
-        .verbose = false,
-        .cleanup_on_exit = false,
-    };
-    char wantedprogram[] = "rfc3330"; // todo: make this configurable
 
     const cJSON *ips = NULL;
     ips = cJSON_GetObjectItemCaseSensitive(prevResult, "ips");
 
     if (ips == NULL)
     {
-        fprintf(stderr, "Failed to get ips.\n");
+        err.code = CNI_INVALID_NETWORK_CONFIG;
+        err.msg = "Failed to retrieve ips";
+        print_cni_error(&err);
         return -1;
     }
 
@@ -160,23 +257,37 @@ int add_command()
 
     if (ip == NULL)
     {
-        fprintf(stderr, "Failed to get ip.\n");
+        err.code = CNI_INVALID_NETWORK_CONFIG;
+        err.msg = "Failed to retrieve default ip";
+        print_cni_error(&err);
         return -1;
     }
 
-    const cJSON *gateway = NULL;
-    gateway = cJSON_GetObjectItemCaseSensitive(ip, "gateway");
+    const cJSON *address = NULL;
+    address = cJSON_GetObjectItemCaseSensitive(ip, "address");
 
-    if (gateway == NULL)
+    if (address == NULL)
     {
-        fprintf(stderr, "Failed to get gateway.\n");
+        err.code = CNI_INVALID_NETWORK_CONFIG;
+        err.msg = "Failed to retrieve default ip address";
+        print_cni_error(&err);
         return -1;
     }
 
-    unsigned int exception_ip = string_to_ip_int(gateway->valuestring);
+    if (!cJSON_IsString(address))
+    {
+        err.code = CNI_INVALID_NETWORK_CONFIG;
+        err.msg = "Error: address is not a string";
+        print_cni_error(&err);
+        return -1;
+    }
+
+    unsigned int exception_ip = string_to_ip_int(address->valuestring);
     if (exception_ip == -1)
     {
-        fprintf(stderr, "Failed to parse gateway IP.\n");
+        err.code = CNI_INVALID_NETWORK_CONFIG;
+        err.msg = "Failed ot parse gateway IP";
+        print_cni_error(&err);
         return -1;
     }
     g_exception = exception_ip;
@@ -184,7 +295,7 @@ int add_command()
     int p;
     for (p = 0; p < NUM_PROGRAMS; p++)
     {
-        if (strcasecmp(wantedprogram, programs_name[p]) == 0)
+        if (strcasecmp(programName_str, g_programs_name[p]) == 0)
         {
             config.program = (program_t)p;
             break;
@@ -192,14 +303,36 @@ int add_command()
     }
     if (config.program == NULL)
     {
-        fprintf(stderr, "unknown program with name: %s\n", wantedprogram);
+        err.code = CNI_INVALID_NETWORK_CONFIG;
+        err.msg = "Unknwon program";
+        err.details = programName_str;
+        print_cni_error(&err);
         return -1;
     }
-    config.attach_point = BPF_TC_INGRESS; // todo: make this configurable
     config.ifindex = ifindex;
+
     strncpy(config.ifname, ifname->valuestring, strlen(ifname->valuestring));
 
-    return attach(&config, exit_after_attach, obj_cb_fn);
+    if (attach(&config, exit_after_attach, obj_fn) != 0)
+    {
+        err.code = CNI_INVALID_NETWORK_CONFIG;
+        err.msg = "Failed to attach BPF program";
+        print_cni_error(&err);
+        return -1;
+    }
+
+    char *string = NULL;
+    string = cJSON_Print(prevResult);
+    if (string == NULL)
+    {
+        err.code = CNI_IO_FAILURE;
+        err.msg = "Failed to prepare result for printing";
+        print_cni_error(&err);
+        return -1;
+    }
+
+    printf("%s\n", string);
+    return 0;
 }
 
 int plugin_main()
@@ -207,15 +340,18 @@ int plugin_main()
     char *cni_command = getenv("CNI_COMMAND");
     if (cni_command == NULL)
     {
-        fprintf(stderr, "CNI_COMMAND is not set\n");
-        return 1;
+        struct cni_error err;
+        err.cni_version = "1.0.0";
+        err.code = CNI_INVALID_ENV_VARS;
+        err.msg = "CNI_COMMAND not set";
+        err.details = "CNI_COMMAND not set";
+        print_cni_error(&err);
+        return -1;
     }
-
     if (strcmp(cni_command, "ADD") == 0)
     {
         return add_command();
     }
-
     else
     {
         return 0;
