@@ -55,3 +55,10 @@ bats_require_minimum_version 1.7.0
     [ $status -eq 64 ]
     [ "${lines[0]}" == "traffico: option '--ifname' requires an existing interface: got 'ciao'" ]
 }
+
+@test "unsupported attach point" {
+    run traffico --at wrong
+    [ ! $status -eq 0 ]
+    [ $status -eq 64 ]
+    [ "${lines[0]}" == "traffico: option '--at' requires one of the following values: INGRESS|EGRESS" ]
+}
