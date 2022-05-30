@@ -37,9 +37,16 @@ const struct argp_option argp_opts[] = {
 
 };
 
+static struct args g_config;
+
+#define log_erro(fmt, ...) \
+    log_err(&g_config, fmt, ##__VA_ARGS__);
+
+#define log_info(fmt, ...) \
+    log_out(&g_config, fmt, ##__VA_ARGS__);
+
 static error_t parse_cli(int key, char *arg, struct argp_state *state)
 {
-    struct args *config = state->input;
     int ifindex;
     int p;
     switch (key)
@@ -47,13 +54,17 @@ static error_t parse_cli(int key, char *arg, struct argp_state *state)
 
     // Initializations
     case ARGP_KEY_INIT:
-        config->attach_point = BPF_TC_EGRESS;
-        config->ifindex = 0;
+        g_config.attach_point = BPF_TC_EGRESS;
+        g_config.ifindex = 0;
+        g_config.cleanup_on_exit = true;
+        g_config.verbose = false;
+        g_config.err_stream = state->err_stream = stderr;
+        g_config.out_stream = state->out_stream = stdout;
         break;
 
     // Options
     case OPT_VERBOSE_KEY:
-        config->verbose = true;
+        g_config.verbose = true;
         break;
     case OPT_IFNAME_KEY:
         ifindex = if_nametoindex(arg);
@@ -61,17 +72,17 @@ static error_t parse_cli(int key, char *arg, struct argp_state *state)
         {
             argp_error(state, "option '--%s' requires an existing interface: got '%s'\n", OPT_IFNAME_LONG, arg);
         }
-        config->ifindex = ifindex;
-        strcpy(config->ifname, arg);
+        g_config.ifindex = ifindex;
+        strcpy(g_config.ifname, arg);
         break;
     case OPT_ATTACH_KEY:
         /**/ if (strncasecmp(arg, "egress", 6) == 0)
         {
-            config->attach_point = BPF_TC_EGRESS;
+            g_config.attach_point = BPF_TC_EGRESS;
         }
         else if (strncasecmp(arg, "ingress", 7) == 0)
         {
-            config->attach_point = BPF_TC_INGRESS;
+            g_config.attach_point = BPF_TC_INGRESS;
         }
         else
         {
@@ -84,38 +95,38 @@ static error_t parse_cli(int key, char *arg, struct argp_state *state)
         assert(arg);
         for (p = 0; p < NUM_PROGRAMS; p++)
         {
-            if (strcasecmp(arg, programs_name[p]) == 0)
+            if (strcasecmp(arg, g_programs_name[p]) == 0)
             {
-                config->program = (program_t)p;
+                g_config.program = (program_t)p;
                 break;
             }
         }
-        config->program_arg = arg;
+        g_config.program_arg = arg;
         break;
 
     case ARGP_KEY_END:
         if (state->arg_num == 0)
         {
-            fprintf(state->err_stream, "%s: program name is mandatory\n\n", state->name);
+            print_log(state->err_stream, true, true, "program name is mandatory\n\n", NULL);
             argp_state_help(state, state->err_stream, ARGP_HELP_STD_HELP | ARGP_HELP_EXIT_ERR);
         }
-        if (config->program == program_0)
+        if (g_config.program == program_0)
         {
-            argp_error(state, "argument '%s' is not a " TOOL_NAME " program", config->program_arg);
+            argp_error(state, "argument '%s' is not a " TOOL_NAME " program", g_config.program_arg);
         }
         break;
 
     // Final settings, validations
     case ARGP_KEY_FINI:
         // Fallback to the default gateway interface by default
-        if (config->ifindex == 0)
+        if (g_config.ifindex == 0)
         {
-            if (get_gateway_iface(config->ifname))
+            if (get_gateway_iface(g_config.ifname))
             {
                 argp_error(state, "could not get the default gateway interface\n");
             }
-            config->ifindex = if_nametoindex(config->ifname);
-            assert(config.ifindex != 0);
+            g_config.ifindex = if_nametoindex(g_config.ifname);
+            assert(g_config.ifindex != 0);
         }
         break;
 
@@ -180,11 +191,7 @@ void sig_handler(int signo)
 
 static int libbpf_print_fn(enum libbpf_print_level level, const char *format, va_list args)
 {
-    if (level == LIBBPF_DEBUG) /* && !config.verbose)*/
-    {
-        return 0;
-    }
-    return vfprintf(stderr, format, args);
+    return print_log(g_config.err_stream, level == LIBBPF_DEBUG && g_config.verbose, false, format, args);
 }
 
 int await(struct bpf_tc_hook hook, struct bpf_tc_opts opts)
@@ -192,7 +199,8 @@ int await(struct bpf_tc_hook hook, struct bpf_tc_opts opts)
     // Block until user signal
     while (!g_stop)
     {
-        fprintf(stderr, ".");
+        fprintf(stdout, ".");
+        fflush(stdout);
         sleep(1);
     }
     fprintf(stdout, "\n");
@@ -208,9 +216,9 @@ int await(struct bpf_tc_hook hook, struct bpf_tc_opts opts)
     if (err)
     {
         libbpf_strerror(err, buf, sizeof(buf));
-        fprintf(stderr, "traffico: fail: detaching the TC eBPF program: %s\n", buf);
+        log_erro("fail: detaching the TC eBPF program: %s\n", buf);
     }
-    fprintf(stdout, "traffico: done: detaching the TC eBPF program\n");
+    log_info("done: detaching the TC eBPF program\n");
 
     return err < 0 ? -err : err;
 }
@@ -222,11 +230,7 @@ int main(int argc, char **argv)
     buf[sizeof(buf) - 1] = '\0';
 
     // CLI
-    struct args config = {
-        .verbose = false, // Must set verbosity before the parsing starts
-        .cleanup_on_exit = true,
-    };
-    err = argp_parse(&argp, argc, argv, ARGP_IN_ORDER, NULL, &config);
+    err = argp_parse(&argp, argc, argv, ARGP_IN_ORDER, NULL, NULL);
     if (err)
     {
         return 1;
@@ -235,7 +239,7 @@ int main(int argc, char **argv)
     // Setup signal handling
     if (signal(SIGINT, sig_handler) == SIG_ERR || signal(SIGTERM, sig_handler) == SIG_ERR)
     {
-        fprintf(stderr, "traffico: can't handle signal: %s\n", strerror(errno));
+        log_erro("can't handle signal: %s\n", strerror(errno));
         return 1;
     }
 
@@ -244,6 +248,6 @@ int main(int argc, char **argv)
     libbpf_set_print(libbpf_print_fn);
 
     // Execute
-    fprintf(stdout, "traffico: prog: %s\n", programs_name[config.program]);
-    return attach(&config, &await);
+    log_info("prog: %s\n", g_programs_name[g_config.program]);
+    return attach(&g_config, &await);
 }
