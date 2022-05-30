@@ -11,13 +11,13 @@ int ${OPERATION}${PROGNAME}(struct args *conf, after_attach_fn_t cb)
     obj = ${PROGNAME}_bpf__open();
     if (!obj)
     {
-        fprintf(stderr, "traffico: fail: opening the eBPF skeleton\n");
+        log_err(conf, "fail: opening the eBPF skeleton\n");
         return 1;
     }
     err = ${PROGNAME}_bpf__load(obj);
     if (err)
     {
-        fprintf(stderr, "traffico: fail: loading the eBPF skeleton\n");
+        log_err(conf, "fail: loading the eBPF skeleton\n");
         goto destroy_${PROGNAME};
     }
 
@@ -30,10 +30,10 @@ int ${OPERATION}${PROGNAME}(struct args *conf, after_attach_fn_t cb)
         if (err != -EEXIST)
         {
             libbpf_strerror(err, buf, sizeof(buf));
-            fprintf(stderr, "traffico: fail: creating the qdisc: %s\n", buf);
+            log_err(conf, "fail: creating the qdisc: %s\n", buf);
             goto destroy_${PROGNAME};
         }
-        fprintf(stdout, "traffico: hook already existing, trying to re-use it\n");
+        log_out(conf, "done: hook already existing, using it\n");
     }
 
     // Attach the TC eBPF program to the qdisc
@@ -43,12 +43,13 @@ int ${OPERATION}${PROGNAME}(struct args *conf, after_attach_fn_t cb)
     if (err)
     {
         libbpf_strerror(err, buf, sizeof(buf));
-        fprintf(stderr, "traffico: fail: attaching the TC eBPF program: %s\n", buf);
+        log_err(conf, "fail: attaching the TC eBPF program: %s\n", buf);
         goto cleanup_${PROGNAME};
     }
-    fprintf(stdout, "traffico: opts: handle: 0x%x\n", opts.handle);
-    fprintf(stdout, "traffico: opts: priority: %d\n", opts.priority);
-    fprintf(stdout, "traffico: opts: program ID: %d\n", opts.prog_id);
+    log_out(conf, "done: attaching the TC eBPF program\n");
+    log_out(conf, "opts: handle: 0x%x\n", opts.handle);
+    log_out(conf, "opts: priority: %d\n", opts.priority);
+    log_out(conf, "opts: program ID: %d\n", opts.prog_id);
 
     err = cb(hook, opts);
 
@@ -61,9 +62,9 @@ cleanup_${PROGNAME}:
         if (err)
         {
             libbpf_strerror(err, buf, sizeof(buf));
-            fprintf(stderr, "traffico: fail: destroying the qdisc: %s\n", buf);
+            log_err(conf, "fail: destroying the qdisc: %s\n", buf);
         }
-        fprintf(stdout, "traffico: done: destroying the qdisc\n");
+        log_out(conf, "done: destroying the qdisc\n");
     }
 
 destroy_${PROGNAME}:
