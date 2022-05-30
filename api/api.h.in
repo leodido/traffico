@@ -4,16 +4,18 @@
 #include <net/if.h>
 #include <bpf/libbpf.h>
 
+/// defines
 #define TOOL_NAME "traffico"
-
 #define NUM_PROGRAMS ${PROGRAMS_COUNT}
 #define PROGRAMS_DESCRIPTION ${PROGRAMS_DESCRIPTION}
 
+/// globals
+static const char *g_programs_name[NUM_PROGRAMS] = {${PROGRAMS_AS_STRINGS}};
+
+/// types
 enum program {${PROGRAMS_AS_SYMBOLS}};
 
 typedef enum program program_t;
-
-static const char *programs_name[NUM_PROGRAMS] = {${PROGRAMS_AS_STRINGS}};
 
 struct args
 {
@@ -25,11 +27,47 @@ struct args
     bool cleanup_on_exit;
     program_t program;
     char *program_arg;
+    FILE *err_stream;
+    FILE *out_stream;
 };
 
 typedef int (*after_attach_fn_t)(struct bpf_tc_hook hook, struct bpf_tc_opts opts);
 
 typedef int (*attach_fn_t)(struct args *conf, after_attach_fn_t cb);
+
+/// logging
+int print_log(FILE *f, bool verbosity, bool prefix, const char *fmt, va_list argptr)
+{
+    int res;
+    if (!verbosity)
+    {
+        return 0;
+    }
+
+    if (prefix)
+    {
+        fprintf(f, TOOL_NAME ": ");
+    }
+    res = vfprintf(f, fmt, argptr);
+
+    return res;
+}
+
+void log_err(struct args *cfg, const char *fmt, ...)
+{
+    va_list argptr;
+    va_start(argptr, fmt);
+    print_log(cfg->err_stream, cfg->verbose, true, fmt, argptr);
+    va_end(argptr);
+}
+
+void log_out(struct args *cfg, const char *fmt, ...)
+{
+    va_list argptr;
+    va_start(argptr, fmt);
+    print_log(cfg->out_stream, cfg->verbose, true, fmt, argptr);
+    va_end(argptr);
+}
 
 /// do nothing after attach
 int exit_after_attach(struct bpf_tc_hook hook, struct bpf_tc_opts opts)
@@ -56,5 +94,7 @@ int attach(struct args *conf, after_attach_fn_t cb)
     }
     return ${OPERATION}0(conf, cb);
 }
+
+
 
 #endif // TRAFFICO_API_H
