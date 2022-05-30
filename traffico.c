@@ -18,12 +18,12 @@ const char argp_program_doc[] =
     "  PROGRAMS\n" PROGRAMS_DESCRIPTION;
 
 const char OPT_VERBOSE_LONG[] = "verbose";
-const char OPT_VERBOSE_KEY = 'v';
+#define OPT_VERBOSE_KEY 'v'
 const char OPT_IFNAME_LONG[] = "ifname";
-const char OPT_IFNAME_KEY = 'i';
+#define OPT_IFNAME_KEY 'i'
 const char OPT_IFNAME_ARG[] = "IFNAME";
 const char OPT_ATTACH_LONG[] = "at";
-const char OPT_ATTACH_KEY = 0x80;
+#define OPT_ATTACH_KEY 0x80
 const char OPT_ATTACH_ARG[] = "INGRESS|EGRESS";
 
 const struct argp_option argp_opts[] = {
@@ -125,8 +125,13 @@ static error_t parse_cli(int key, char *arg, struct argp_state *state)
             {
                 argp_error(state, "could not get the default gateway interface\n");
             }
+<<<<<<< HEAD
             g_config.ifindex = if_nametoindex(g_config.ifname);
             assert(g_config.ifindex != 0);
+=======
+            config->ifindex = if_nametoindex(config->ifname);
+            assert(config->ifindex != 0);
+>>>>>>> 83caef0 (fix: arg char indexes as defines)
         }
         break;
 
