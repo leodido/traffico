@@ -95,12 +95,14 @@ int rfc3330(struct __sk_buff *skb)
         u32 netmask = bpf_htonl(blocked_subnets[i].netmask);
         u32 subnetip = bpf_htonl(blocked_subnets[i].subnet);
 
-        if ((ip_header->daddr & netmask) == (subnetip & netmask))
+        bpf_printk("ip_header->saddr & netmask: %d", ip_header->saddr & netmask);
+        bpf_printk("subnetip & netmask: %d", subnetip & netmask);
+
+        if ((ip_header->saddr & netmask) == (subnetip & netmask))
         {
             if (bpf_htonl(exception) == ip_header->daddr)
             {
-
-                if (bpf_ntohs(tcp->source) == 22)
+                if (bpf_ntohs(tcp->dest) == 22)
                 {
                     bpf_printk("even though it matched, daddr is the exception so we will allow incoming ssh connections from it");
                     return TC_ACT_OK;

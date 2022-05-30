@@ -24,7 +24,8 @@ target("traffico-cni")
     add_packages("cjson")
     includes("api")
     add_deps("api")
-    add_files({ "main.c" }, { languages = { "c11" }})
+    add_packages("libbpf")
+    add_files({ "traffico-cni.c" }, { languages = { "c11" }})
 target_end()
 
 -- test

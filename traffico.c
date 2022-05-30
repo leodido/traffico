@@ -125,13 +125,8 @@ static error_t parse_cli(int key, char *arg, struct argp_state *state)
             {
                 argp_error(state, "could not get the default gateway interface\n");
             }
-<<<<<<< HEAD
             g_config.ifindex = if_nametoindex(g_config.ifname);
             assert(g_config.ifindex != 0);
-=======
-            config->ifindex = if_nametoindex(config->ifname);
-            assert(config->ifindex != 0);
->>>>>>> 83caef0 (fix: arg char indexes as defines)
         }
         break;
 
@@ -254,5 +249,5 @@ int main(int argc, char **argv)
 
     // Execute
     log_info("prog: %s\n", g_programs_name[g_config.program]);
-    return attach(&g_config, &await);
+    return attach(&g_config, &await, NULL);
 }
