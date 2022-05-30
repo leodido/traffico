@@ -21,6 +21,11 @@ DOWNLOAD
 
     git clone https://github.com/leodido/traffico.git
 
+AUTHORS
+
+    Leonardo Di Donato
+    Lorenzo Fontana
+
 USAGE
 
     ...
@@ -41,7 +46,9 @@ BUILD
 
     xmake -b bpf
 
-MAINTAINERS
+TEST
 
-    Leonardo Di Donato
-    Lorenzo Fontana
+    To run the test suite you can do this:
+
+    xmake -b test
+    xmake run test
