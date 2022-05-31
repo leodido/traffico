@@ -38,3 +38,14 @@ teardown() {
     run ip netns exec "${NETNS}" tc qdisc show dev peer0 clsact
     [ "$(echo $output | xargs)" == "qdisc clsact ffff: parent ffff:fff1" ]
 }
+
+@test "block_private_ipv4 blocks ICMP packets" {
+    run ip netns exec "${NETNS}" ping -W1 -4 -c1 10.22.1.2
+    [ $status -eq 0 ]
+    run ip netns exec "${NETNS}" traffico -i lo --at egress block_private_ipv4 >/dev/null 3>&- &
+    sleep 1
+    run ip netns exec "${NETNS}" tc qdisc show dev lo clsact
+    [ "$(echo $output | xargs)" == "qdisc clsact ffff: parent ffff:fff1" ]
+    run ip netns exec "${NETNS}" ping -W1 -4 -c1 10.22.1.2
+    [ $status -eq 1 ]
+}
