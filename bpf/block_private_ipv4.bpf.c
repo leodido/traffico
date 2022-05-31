@@ -17,11 +17,6 @@ static struct subnet blocked_subnets[] = {
         .subnet = 0x0A000000,  // 10.0.0.0
         .netmask = 0xFF000000, // 255.0.0.0
     },
-    // 169.254.0.0/16
-    {
-        .subnet = 0xA9FE0000,  // 169.254.0.0
-        .netmask = 0xFFFF0000, // 255.255.0.0
-    },
     // 172.16.0.0/12
     {
         .subnet = 0xAC100000,  // 172.16.0.0
@@ -34,11 +29,10 @@ static struct subnet blocked_subnets[] = {
     },
 };
 
-const volatile __u32 exception = 0;
-
 SEC("tc")
-int rfc3330(struct __sk_buff *skb)
+int block_private_ipv4(struct __sk_buff *skb)
 {
+    bpf_printk("=============================================");
     void *data_end = (void *)(unsigned long long)skb->data_end;
     void *data = (void *)(unsigned long long)skb->data;
 
@@ -86,29 +80,28 @@ int rfc3330(struct __sk_buff *skb)
         return TC_ACT_OK;
     }
 
-    u32 exception_nl = bpf_htonl(exception);
-
     bpf_printk("daddr: %d", ip_header->daddr);
     bpf_printk("saddr: %d", ip_header->saddr);
-    bpf_printk("exception: %d", exception_nl);
+
+    u16 tcp_dest_nl = bpf_ntohs(tcp->dest);
+    u16 tcp_source_nl = bpf_ntohs(tcp->source);
 
     for (int i = 0; i < sizeof(blocked_subnets) / sizeof(struct subnet); i++)
     {
         u32 netmask = bpf_htonl(blocked_subnets[i].netmask);
         u32 subnetip = bpf_htonl(blocked_subnets[i].subnet);
 
-        bpf_printk("ip_header->saddr & netmask: %d", ip_header->saddr & netmask);
+        bpf_printk("ip_header->daddr & netmask: %d", ip_header->daddr & netmask);
         bpf_printk("subnetip & netmask: %d", subnetip & netmask);
+        bpf_printk("tcp dest port: %d", tcp_dest_nl);
+        bpf_printk("tcp source port: %d", tcp_source_nl);
 
-        if ((ip_header->saddr & netmask) == (subnetip & netmask))
+        if ((ip_header->daddr & netmask) == (subnetip & netmask))
         {
-            if (exception_nl == ip_header->daddr)
+            if (tcp_source_nl == 22)
             {
-                if (bpf_ntohs(tcp->dest) == 22)
-                {
-                    bpf_printk("even though it matched, daddr is the exception so we will allow incoming ssh connections from it");
-                    return TC_ACT_OK;
-                }
+                bpf_printk("even though it matched, the source port is 22, so we will allow it");
+                return TC_ACT_OK;
             }
 
             bpf_printk("daddr is on a blocked subnet, shot");
