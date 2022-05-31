@@ -86,9 +86,11 @@ int rfc3330(struct __sk_buff *skb)
         return TC_ACT_OK;
     }
 
+    u32 exception_nl = bpf_htonl(exception);
+
     bpf_printk("daddr: %d", ip_header->daddr);
     bpf_printk("saddr: %d", ip_header->saddr);
-    bpf_printk("exception: %d", bpf_htonl(exception));
+    bpf_printk("exception: %d", exception_nl);
 
     for (int i = 0; i < sizeof(blocked_subnets) / sizeof(struct subnet); i++)
     {
@@ -100,7 +102,7 @@ int rfc3330(struct __sk_buff *skb)
 
         if ((ip_header->saddr & netmask) == (subnetip & netmask))
         {
-            if (bpf_htonl(exception) == ip_header->daddr)
+            if (exception_nl == ip_header->daddr)
             {
                 if (bpf_ntohs(tcp->dest) == 22)
                 {
