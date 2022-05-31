@@ -12,10 +12,10 @@ new_netns() {
 }
 
 setup_net() {
-    local VETH="veth0"
-    local PEER="peer0"
-    local VETH_ADDR="10.22.1.1"
-    local PEER_ADDR="10.22.1.2"
+    export VETH="veth0"
+    export PEER="peer0"
+    export VETH_ADDR="10.22.1.1"
+    export PEER_ADDR="10.22.1.2"
 
     echo "# create veth link $VETH <-> $PEER" >&3
     ip link add "$VETH" type veth peer name "$PEER" &>/dev/null
@@ -35,8 +35,17 @@ setup_net() {
 }
 
 del_netdev() {
-    local VETH="veth0"
     echo "# delete device $VETH" >&3
     ip link delete "$VETH" &>/dev/null
 }
 
+new_server() {
+    export SERVER_PORT=8787
+    echo "# serving $BATS_TMPDIR at $SERVER_PORT" >&3
+    mini_httpd -d "$BATS_TMPDIR" -p "$SERVER_PORT" -i "$BATS_RUN_TMPDIR/mini_httpd.pid" &>/dev/null
+}
+
+del_server() {
+    echo "# shutdown server" >&3
+    pkill -F "$BATS_RUN_TMPDIR/mini_httpd.pid" &>/dev/null
+}
