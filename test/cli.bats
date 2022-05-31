@@ -1,10 +1,8 @@
 #!/usr/bin/env bats
 
-setup_file() {
-    load helpers
-
-    export BATS_TEST_NAME_PREFIX=$(setsuite)
-}
+load helpers
+export BATS_TEST_NAME_PREFIX=$(setsuite)
+bats_require_minimum_version 1.7.0
 
 setup() {
     echo "# setup" >&3

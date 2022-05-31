@@ -1,0 +1,10 @@
+{
+	"cniVersion":	"1.0.0",
+	"interfaces":	[{
+			"name":	"peer0"
+		}],
+	"ips":	[],
+	"routes":	[],
+	"dns":	{
+	}
+}
