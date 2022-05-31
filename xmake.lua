@@ -38,6 +38,7 @@ target("test")
         for _, name in ipairs(target:get("deps")) do
             os.addenv("PATH", path.absolute(target:dep(name):targetdir()))
         end
-        os.execv("bats", { "test/" })
+        import("privilege.sudo")
+        sudo.execv("bats", { "-t", "test/" })
     end)
 target_end()
