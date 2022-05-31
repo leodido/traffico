@@ -9,8 +9,6 @@
 
 #include "api.h"
 
-#define RFC3330_PROGRAM_NAME "rfc3330"
-
 enum cni_error_codes
 {
     CNI_INCOMPATIBLE = 1,
@@ -100,22 +98,12 @@ unsigned int string_to_ip_int(const char *ip)
     return ret;
 }
 
-unsigned int g_exception = 0;
-int rfc3330_cb_fn(void *obj)
-{
-    struct rfc3330_bpf *rfc3330 = (struct rfc3330_bpf *)obj;
-    rfc3330->rodata->exception = g_exception;
-    return 0;
-}
-
 int add_command()
 {
     struct cni_error err;
     err.cni_version = "1.0.0";
     err.msg = "";
     err.details = "";
-
-    bpf_obj_fn_t obj_fn = NULL;
 
     struct args config = {
         .verbose = false,
@@ -155,19 +143,15 @@ int add_command()
     programName = cJSON_GetObjectItemCaseSensitive(jsonobj, "program");
     char *programName_str = NULL;
 
-    if (programName != NULL && cJSON_IsString(programName))
+    if (programName == NULL || !cJSON_IsString(programName))
     {
-        programName_str = programName->valuestring;
-    }
-    else
-    {
-        programName_str = RFC3330_PROGRAM_NAME;
+        err.code = CNI_INVALID_NETWORK_CONFIG;
+        err.msg = "Missing or invalid field 'program'";
+        print_cni_error(&err);
+        return -1;
     }
 
-    if (strcmp(programName_str, RFC3330_PROGRAM_NAME) == 0)
-    {
-        obj_fn = rfc3330_cb_fn;
-    }
+    programName_str = programName->valuestring;
 
     const cJSON *attachPoint = NULL;
     attachPoint = cJSON_GetObjectItemCaseSensitive(jsonobj, "attachPoint");
@@ -240,57 +224,7 @@ int add_command()
         print_cni_error(&err);
         return -1;
     }
-
-    const cJSON *ips = NULL;
-    ips = cJSON_GetObjectItemCaseSensitive(prevResult, "ips");
-
-    if (ips == NULL)
-    {
-        err.code = CNI_INVALID_NETWORK_CONFIG;
-        err.msg = "Failed to retrieve ips";
-        print_cni_error(&err);
-        return -1;
-    }
-
-    const cJSON *ip = NULL;
-    ip = cJSON_GetArrayItem(ips, 0);
-
-    if (ip == NULL)
-    {
-        err.code = CNI_INVALID_NETWORK_CONFIG;
-        err.msg = "Failed to retrieve default ip";
-        print_cni_error(&err);
-        return -1;
-    }
-
-    const cJSON *address = NULL;
-    address = cJSON_GetObjectItemCaseSensitive(ip, "address");
-
-    if (address == NULL)
-    {
-        err.code = CNI_INVALID_NETWORK_CONFIG;
-        err.msg = "Failed to retrieve default ip address";
-        print_cni_error(&err);
-        return -1;
-    }
-
-    if (!cJSON_IsString(address))
-    {
-        err.code = CNI_INVALID_NETWORK_CONFIG;
-        err.msg = "Error: address is not a string";
-        print_cni_error(&err);
-        return -1;
-    }
-
-    unsigned int exception_ip = string_to_ip_int(address->valuestring);
-    if (exception_ip == -1)
-    {
-        err.code = CNI_INVALID_NETWORK_CONFIG;
-        err.msg = "Failed ot parse gateway IP";
-        print_cni_error(&err);
-        return -1;
-    }
-    g_exception = exception_ip;
+    config.ifindex = ifindex;
 
     int p;
     for (p = 0; p < NUM_PROGRAMS; p++)
@@ -309,11 +243,10 @@ int add_command()
         print_cni_error(&err);
         return -1;
     }
-    config.ifindex = ifindex;
 
     strncpy(config.ifname, ifname->valuestring, strlen(ifname->valuestring));
 
-    if (attach(&config, exit_after_attach, obj_fn) != 0)
+    if (attach(&config, exit_after_attach, NULL) != 0)
     {
         err.code = CNI_INVALID_NETWORK_CONFIG;
         err.msg = "Failed to attach BPF program";
