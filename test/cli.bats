@@ -1,64 +1,40 @@
 #!/usr/bin/env bats
 
-bats_require_minimum_version 1.7.0
+setup_file() {
+    load helpers
 
-@test "help" {
-    run traffico --help
-    [ $status -eq 0 ]
-    [ "${lines[0]}" == 'Usage: traffico [OPTION...] PROGRAM' ]
+    export BATS_TEST_NAME_PREFIX=$(setsuite)
 }
 
-@test "usage" {
-    run traffico --usage
-    [ $status -eq 0 ]
-    [ "${lines[0]%% *}" == 'Usage:' ]
+setup() {
+    echo "# setup" >&3
+
+    load ns
+
+    NETNS="ns$((RANDOM % 10))"
+
+    new_netns "${NETNS}"
+    setup_net "${NETNS}"
 }
 
-@test "invalid option" {
-    run traffico -x
-    [ ! $status -eq 0 ]
-    [ $status -eq 64 ]
-    [ "${lines[0]##*: }" == "invalid option -- 'x'" ]
+teardown() {
+    echo "# teardown" >&3
+
+    killall traffico || true
+    del_netdev
+    del_netns "${NETNS}"
 }
 
-@test "unrecognized option" {
-    run traffico --xxxx
-    [ ! $status -eq 0 ]
-    [ $status -eq 64 ]
-    [ "${lines[0]##*: }" == "unrecognized option '--xxxx'" ]
+@test "install nop program at egress" {
+    run ip netns exec "${NETNS}" traffico -i peer0 nop >/dev/null 3>&- &
+    sleep 1
+    run ip netns exec "${NETNS}" tc qdisc show dev peer0 clsact
+    [ "$(echo $output | xargs)" == "qdisc clsact ffff: parent ffff:fff1" ]
 }
 
-@test "missing program" {
-    run traffico
-    [ ! $status -eq 0 ]
-    [ $status -eq 64 ]
-    [ "${lines[0]}" == 'traffico: program name is mandatory' ]
-}
-
-@test "unavailable program" {
-    run traffico xxx
-    [ ! $status -eq 0 ]
-    [ $status -eq 64 ]
-    [ "${lines[0]}" == "traffico: argument 'xxx' is not a traffico program" ]
-}
-
-@test "unavailable network interface" {
-    run traffico -i ciao
-    [ ! $status -eq 0 ]
-    [ $status -eq 64 ]
-    [ "${lines[0]}" == "traffico: option '--ifname' requires an existing interface: got 'ciao'" ]
-}
-
-@test "unavailable network interface (long)" {
-    run traffico --ifname ciao
-    [ ! $status -eq 0 ]
-    [ $status -eq 64 ]
-    [ "${lines[0]}" == "traffico: option '--ifname' requires an existing interface: got 'ciao'" ]
-}
-
-@test "unsupported attach point" {
-    run traffico --at wrong
-    [ ! $status -eq 0 ]
-    [ $status -eq 64 ]
-    [ "${lines[0]}" == "traffico: option '--at' requires one of the following values: INGRESS|EGRESS" ]
+@test "install nop program at ingress" {
+    run ip netns exec "${NETNS}" traffico -i peer0 --at ingress nop >/dev/null 3>&- &
+    sleep 1
+    run ip netns exec "${NETNS}" tc qdisc show dev peer0 clsact
+    [ "$(echo $output | xargs)" == "qdisc clsact ffff: parent ffff:fff1" ]
 }
