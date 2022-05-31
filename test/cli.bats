@@ -5,9 +5,9 @@ export BATS_TEST_NAME_PREFIX=$(setsuite)
 bats_require_minimum_version 1.7.0
 
 setup() {
-    echo "# setup" >&3
+    echo "# setup:" >&3
 
-    load ns
+    load net
 
     NETNS="ns$((RANDOM % 10))"
 
@@ -16,7 +16,7 @@ setup() {
 }
 
 teardown() {
-    echo "# teardown" >&3
+    echo "# teardown:" >&3
 
     killall traffico || true
     del_netdev
