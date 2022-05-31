@@ -30,10 +30,11 @@ target_end()
 
 -- test
 add_requires("bats v1.7.0", { system = false })
+add_requires("mini_httpd", { system = false })
 target("test")
     set_kind("phony")
     add_deps("traffico", "traffico-cni")
-    add_packages("bats")
+    add_packages("bats", "mini_httpd")
     on_run(function (target)
         for _, name in ipairs(target:get("deps")) do
             os.addenv("PATH", path.absolute(target:dep(name):targetdir()))
