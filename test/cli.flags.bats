@@ -1,12 +1,8 @@
 #!/usr/bin/env bats
 
+load helpers
+export BATS_TEST_NAME_PREFIX=$(setsuite)
 bats_require_minimum_version 1.7.0
-
-setup_file() {
-    load helpers
-
-    export BATS_TEST_NAME_PREFIX=$(setsuite)
-}
 
 @test "help" {
     run traffico --help
