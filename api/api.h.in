@@ -17,7 +17,7 @@ enum program {${PROGRAMS_AS_SYMBOLS}};
 
 typedef enum program program_t;
 
-struct args
+struct config
 {
     bool verbose;
     char ifname[IF_NAMESIZE];
@@ -35,7 +35,7 @@ typedef int (*bpf_obj_fn_t)(void *obj);
 
 typedef int (*after_attach_fn_t)(struct bpf_tc_hook hook, struct bpf_tc_opts opts);
 
-typedef int (*attach_fn_t)(struct args *conf, after_attach_fn_t cb, bpf_obj_fn_t obj_cb);
+typedef int (*attach_fn_t)(struct config *conf, after_attach_fn_t cb, bpf_obj_fn_t obj_cb);
 
 /// logging
 int print_log(FILE *f, bool verbosity, bool prefix, const char *fmt, va_list argptr)
@@ -55,7 +55,7 @@ int print_log(FILE *f, bool verbosity, bool prefix, const char *fmt, va_list arg
     return res;
 }
 
-void log_err(struct args *cfg, const char *fmt, ...)
+void log_err(struct config *cfg, const char *fmt, ...)
 {
     va_list argptr;
     va_start(argptr, fmt);
@@ -63,7 +63,7 @@ void log_err(struct args *cfg, const char *fmt, ...)
     va_end(argptr);
 }
 
-void log_out(struct args *cfg, const char *fmt, ...)
+void log_out(struct config *cfg, const char *fmt, ...)
 {
     va_list argptr;
     va_start(argptr, fmt);
@@ -88,7 +88,7 @@ ${API}
 /// dispatch
 attach_fn_t attach_fn[NUM_PROGRAMS] = { ${PROGRAMS_OPS_AS_SYMBOLS} };
 
-int attach(struct args *conf, after_attach_fn_t cb, bpf_obj_fn_t obj_cb)
+int attach(struct config *conf, after_attach_fn_t cb, bpf_obj_fn_t obj_cb)
 {
     attach_fn_t fn = attach_fn[conf->program];
     if (fn) {

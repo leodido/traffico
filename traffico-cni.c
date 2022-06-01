@@ -105,7 +105,7 @@ int add_command()
     err.msg = "";
     err.details = "";
 
-    struct args config = {
+    struct config config = {
         .verbose = false,
         .cleanup_on_exit = false,
     };

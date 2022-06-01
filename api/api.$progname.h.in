@@ -1,7 +1,7 @@
 #include "${PROGNAME}.skel.h"
 
 #include <errno.h>
-int ${OPERATION}${PROGNAME}(struct args *conf, after_attach_fn_t cb, bpf_obj_fn_t obj_cb)
+int ${OPERATION}${PROGNAME}(struct config *conf, after_attach_fn_t cb, bpf_obj_fn_t obj_cb)
 {
     int err;
     char buf[100];

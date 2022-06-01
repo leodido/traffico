@@ -37,7 +37,7 @@ const struct argp_option argp_opts[] = {
 
 };
 
-static struct args g_config;
+static struct config g_config;
 
 #define log_erro(fmt, ...) \
     log_err(&g_config, fmt, ##__VA_ARGS__);
