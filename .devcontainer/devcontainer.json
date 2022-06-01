@@ -10,5 +10,8 @@
             ]
         }
     },
+    "runArgs": [
+        "--privileged"
+    ],
     "forwardPorts": []
 }
