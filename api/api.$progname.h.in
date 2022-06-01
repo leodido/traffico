@@ -65,6 +65,19 @@ int ${OPERATION}${PROGNAME}(struct config *conf, after_attach_fn_t cb, bpf_obj_f
 
     err = cb(hook, opts);
 
+    if (conf->cleanup_on_exit)
+    {
+        opts.prog_fd = opts.prog_id = 0;
+        opts.flags = 0;
+        err = bpf_tc_detach(&hook, &opts);
+        if (err)
+        {
+            libbpf_strerror(err, buf, sizeof(buf));
+            log_err(conf, "fail: detaching the TC eBPF program: %s\n", buf);
+        }
+        log_out(conf, "done: detaching the TC eBPF program\n");
+    }
+
 cleanup_${PROGNAME}:
     if (conf->cleanup_on_exit)
     {
