@@ -38,7 +38,7 @@ USAGE
 
     traffico
         traffico is a CLI tool that can be used to load and unload the programs.
-        You can choose an interface and choose wether the program will be loaded in
+        You can choose an interface and choose whether the program will be loaded in
         "INGRESS" or "EGRESS".
 
         Example usage:
@@ -93,9 +93,6 @@ USAGE
                 }
             ]
         }
-
-
-
 
 BUILT-IN PROGRAMS
 
