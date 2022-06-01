@@ -100,6 +100,14 @@ BUILT-IN PROGRAMS
         block_private_ipv4 is a program that can be used to block
         private IPv4 addresses subnets allowing only SSH access on port 22.
 
+    block_ip
+        block_ip is a program that drops packets with destination equal to the
+        input IPv4 address.
+
+    block_port
+        block_port is a program that drops packets with the destination port
+        equal to the input port number.
+
     nop
         nop is a simple program that does nothing.
 
