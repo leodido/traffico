@@ -3,8 +3,6 @@ set_xmakever("2.6.1") -- Minimum version to compile BPF source correctly
 -- includes
 includes("xmake/repos.lua")
 
-add_requires("cjson")
-
 -- rules
 add_rules("mode.release", "mode.debug")
 
@@ -19,6 +17,7 @@ target("traffico")
 target_end()
 
 -- traffico-cni
+add_requires("cjson")
 target("traffico-cni")
     set_kind("binary")
     add_packages("cjson")
