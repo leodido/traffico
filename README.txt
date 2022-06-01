@@ -8,7 +8,13 @@
 
 README
 
-    traffico is ...
+    traffico is a collection of tools to shape traffic on a network using traffic control tc(8).
+    It can be used via a CLI tool (traffico) or as a CNI plugin (traffico-cni).
+    For a list of the available programs and what they do see the BUILT-IN PROGRAMS section.
+
+    The BUILT-IN PROGRAMS are very opinionated and made for the needs of the authors but the framework
+    is flexible enough to be used for other purposes. You can add programs to the bpf/ directory
+    to extend it to other use cases.
 
 CONTACT
 
@@ -28,7 +34,77 @@ AUTHORS
 
 USAGE
 
-    ...
+    Traffico can be either used standalone or as a CNI plugin.
+
+    traffico
+        traffico is a CLI tool that can be used to load and unload the programs.
+        You can choose an interface and choose wether the program will be loaded in
+        "INGRESS" or "EGRESS".
+
+        Example usage:
+            traffico --ifname=eth0 --at=INGRESS block_private_ipv4
+
+    traffico-cni
+        traffico-cni is a meta CNI plugin that allows the traffico programs to be used in CNI.
+
+        Meta means that traffic-cni does not create any interface for you,
+        it is intended to be used as a chained CNI plugin.
+
+        The plugin block to use traffico-cni is very similar to how traffico is
+        used as a CLI tool.
+
+        {
+            "type": "traffico-cni",
+            "program": "block_private_ipv4",
+            "attachPoint": "ingress"
+        }
+
+        Here's an example CNI config file featuring traffico-cni.
+
+        {
+            "name": "mynetwork",
+            "cniVersion": "0.4.0",
+            "plugins": [
+                {
+                    "type": "ptp",
+                    "ipMasq": true,
+                    "ipam": {
+                        "type": "host-local",
+                        "subnet": "10.10.10.0/24",
+                        "resolvConf": "/etc/resolv.conf",
+                        "routes": [
+                            { "dst": "0.0.0.0/0" }
+                        ]
+                    },
+                    "dns": {
+                        "nameservers": ["1.1.1.1", "1.0.0.1"]
+                    }
+                },
+                {
+                    "type": "firewall"
+                },
+                {
+                    "type": "traffico-cni",
+                    "program": "block_private_ipv4",
+                    "attachPoint": "ingress"
+                },
+                {
+                    "type": "tc-redirect-tap"
+                }
+            ]
+        }
+
+
+
+
+BUILT-IN PROGRAMS
+
+    block_private_ipv4
+        block_private_ipv4 is a program that can be used to block
+        private IPv4 addresses subnets allowing only SSH access on port 22.
+
+    nop
+        nop is a simple program that does nothing.
 
 BUILD
 
