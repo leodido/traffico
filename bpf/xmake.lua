@@ -8,7 +8,7 @@ rule("bpf")
     set_extensions(".bpf.c")
     on_config(function (target)
         assert(is_host("linux"), 'rule("bpf"): only supported on linux!')
-        local headerdir = path.join(target:autogendir())
+        local headerdir = target:autogendir()
         if not os.isdir(headerdir) then
             os.mkdir(headerdir)
         end

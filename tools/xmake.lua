@@ -15,12 +15,13 @@ target("bpftool")
     set_kind("phony")
     on_config(function (target)
         if os.tryrm(bpftool) then
+            local sys_bpftool
             if has_config("require-bpftool") then
-                local target = path.join(target:pkg("linux-tools"):installdir(), "sbin", "bpftool")
-                os.ln(target, bpftool)
+                sys_bpftool = path.join(target:pkg("linux-tools"):installdir(), "sbin", "bpftool")
+                os.ln(sys_bpftool, bpftool)
             else
                 import("lib.detect.find_program")
-                local sys_bpftool = find_program("bpftool")
+                sys_bpftool = find_program("bpftool")
                 if sys_bpftool == nil then
                     os.raise("cannot find bpftool in system")
                 end
@@ -28,6 +29,7 @@ target("bpftool")
             end
             import("core.base.option")
             if option.get("verbose") then
+                print(sys_bpftool)
                 import("core.base.json")
                 local vers = os.iorunv(bpftool, {"version", "-j"})
                 print(json.decode(vers))

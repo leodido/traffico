@@ -6,6 +6,7 @@ function _get_programs(target_name)
     local programs = {}
     for _, target in pairs(project.targets()) do
         if target:is_enabled() and target:name() == target_name then
+            -- print(target:autogendir())
             for _, src in pairs(target:sourcebatches()) do
                 table.join2(programs, src.sourcefiles)
             end
@@ -25,11 +26,15 @@ function gen(target, source_target)
 
     target:set("configdir", target:autogendir())
 
+    --import("lib.detect.check_cxsnippets")
+    --utils.dump(check_cxsnippets("void test() {(unsigned long)&((struct block_ip_bpf*)0)->rodata;}", {includes = {path.absolute("build/.gens/bpf/linux/x86_64/release/block_ip.skel.h")}}))
+
     local configfile_template = "api.$progname.h.in"
     local configfile_template_path = path.join(target:scriptdir(), configfile_template)
 
     local programs = _get_programs(source_target)
     for _, p in ipairs(programs) do
+        --print(p)
         local progname = string.match(path.basename(p), "(.+)%..+$")
         local confname = string.gsub(configfile_template, "%$(%w+)", { progname = progname })
         local tempconf = path.join(os.tmpdir(), confname)
