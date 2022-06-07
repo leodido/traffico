@@ -1,11 +1,9 @@
 FROM docker.io/archlinux:latest
 
 RUN pacman -Syy --noconfirm
-RUN pacman -S --noconfirm nodejs clang llvm gcc linux-headers bpf unzip docker vi vim cmake
+RUN pacman -S --noconfirm nodejs clang llvm gcc linux-headers bpf unzip docker vi vim cmake gdb tree
 
 RUN pacman -S --noconfirm --needed git base-devel
-
-
 
 # user setup
 WORKDIR /tmp
