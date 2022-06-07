@@ -127,6 +127,14 @@ BUILD
 
     xmake -b bpf
 
+    In case you want to compile in debug mode:
+
+    xmake f -m debug
+
+    You will be able to read from the trace_pipe the logs of the BPF programs
+    and you will obtain the logs of libbpf into the stderr only if you compile
+    in debug mode.
+
 TEST
 
     To run the test suite you can do this:
