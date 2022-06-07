@@ -1,4 +1,5 @@
 import("core.project.project")
+import("lib.detect.check_cxsnippets")
 
 -- get sourcefiles
 function _get_programs(target_name)
@@ -17,6 +18,10 @@ function gen(target, source_target)
     if not target then
         raise("could not configure target")
     end
+    local source_gendir = path.absolute(project.target(source_target):autogendir())
+    if not source_gendir then
+        raise("could not obtain the autogendir of the source target")
+    end
 
     target:set("configdir", target:autogendir())
 
@@ -30,7 +35,22 @@ function gen(target, source_target)
         local tempconf = path.join(os.tmpdir(), confname)
         os.tryrm(tempconf)
         os.cp(configfile_template_path, tempconf)
-        target:add("configfiles", tempconf, { variables = { PROGNAME = progname, OPERATION = "attach__" } })
+
+        local skelpath = path.join(source_gendir, progname .. ".skel.h")
+        local has_rodata = check_cxsnippets("void test() {&((struct " .. progname .. "_bpf*)0)->rodata;}", {includes = skelpath}) and 1 or 0
+        if has_rodata == 1 then
+            utils.dump(
+                check_cxsnippets('void test() {printf("%ld", sizeof(&((struct ' .. progname .. '_bpf*)0)->rodata));}', {includes = skelpath})
+            )
+        end
+
+        target:add("configfiles", tempconf, {
+            variables = {
+                PROGNAME = progname,
+                OPERATION = "attach__",
+                PROGNAME_WITH_RODATA = has_rodata
+            }
+        })
     end
 end
 
@@ -51,18 +71,23 @@ function main(target, components_target, banner)
 
     local op = vars[1].variables.OPERATION
     v["OPERATION"] = op
-    
+
+    local descr = '"  - '
     local programs = {}
     table.insert(programs, "0")
-    for _, v in ipairs(vars) do
+    for i, v in ipairs(vars) do
         table.insert(programs, v.variables.PROGNAME)
+        descr = descr .. v.variables.PROGNAME .. (v.variables.PROGNAME_WITH_RODATA == 1 and ' [input]' or '')
+        if i ~= #vars then
+            descr = descr .. '\\n  - '
+        end
     end
     table.sort(programs)
     v["PROGRAMS_AS_SYMBOLS"] = 'program_' .. table.concat(programs, ", program_")
     v["PROGRAMS_AS_STRINGS"] = '"' .. table.concat(programs, '", "') .. '"'
     v["PROGRAMS_OPS_AS_SYMBOLS"] = op .. table.concat(programs, ', ' .. op)
     table.remove(programs, 1)
-    v["PROGRAMS_DESCRIPTION"] = '"  - ' .. table.concat(programs, '\\n  - ') .. '"'
+    v["PROGRAMS_DESCRIPTION"] = descr .. '"'
 
     local content = ""
     for i, c in ipairs(components) do
