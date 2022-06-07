@@ -1,4 +1,5 @@
 import("core.project.project")
+import("lib.detect.check_cxsnippets")
 
 -- get sourcefiles
 function _get_programs(target_name)
@@ -17,6 +18,10 @@ function gen(target, source_target)
     if not target then
         raise("could not configure target")
     end
+    local source_gendir = path.absolute(project.target(source_target):autogendir())
+    if not source_gendir then
+        raise("could not obtain the autogendir of the source target")
+    end
 
     target:set("configdir", target:autogendir())
 
@@ -30,7 +35,19 @@ function gen(target, source_target)
         local tempconf = path.join(os.tmpdir(), confname)
         os.tryrm(tempconf)
         os.cp(configfile_template_path, tempconf)
-        target:add("configfiles", tempconf, { variables = { PROGNAME = progname, OPERATION = "attach__" } })
+
+        local skelpath = path.join(source_gendir, progname .. ".skel.h")
+        local has_rodata = check_cxsnippets("void test() {&((struct ".. progname .. "_bpf*)0)->rodata;}", {includes = skelpath}) and 1 or 0
+        local rodata_name = ""
+        if has_rodata then
+            rodata_name = string.sub(progname, 0, 9)
+        end
+
+        target:add("configfiles", tempconf, {
+            variables = {
+                PROGNAME = progname, OPERATION = "attach__", PROGNAME_HAS_RODATA = has_rodata, ROMAP_NAME = rodata_name
+            }
+        })
     end
 end
 
@@ -51,7 +68,7 @@ function main(target, components_target, banner)
 
     local op = vars[1].variables.OPERATION
     v["OPERATION"] = op
-    
+
     local programs = {}
     table.insert(programs, "0")
     for _, v in ipairs(vars) do

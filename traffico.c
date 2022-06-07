@@ -240,5 +240,5 @@ int main(int argc, char **argv)
 
     // Execute
     log_info("prog: %s\n", g_programs_name[g_config.program]);
-    return attach(&g_config, &await, NULL);
+    return attach(&g_config, &await, 0);
 }

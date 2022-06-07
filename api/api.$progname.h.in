@@ -1,6 +1,25 @@
 #include "${PROGNAME}.skel.h"
 
-int ${OPERATION}${PROGNAME}(struct config *conf, after_attach_fn_t cb, bpf_obj_fn_t obj_cb)
+#define ${PROGNAME}_has_rodata ${PROGNAME_HAS_RODATA}
+
+#if ${PROGNAME}_has_rodata
+int set_${PROGNAME}_rodata(struct bpf_object *o, struct ${PROGNAME}_bpf__rodata *data)
+{
+    struct bpf_map *m = bpf_object__find_map_by_name(o, "${ROMAP_NAME}.rodata");
+    if (!m)
+    {
+        return 1;
+    }
+    return bpf_map__set_initial_value(m, data, bpf_map__value_size(m));
+}
+#else
+int set_${PROGNAME}_rodata(struct bpf_object *o, const void* data)
+{
+    return 0;
+}
+#endif
+
+int ${OPERATION}${PROGNAME}(struct config *conf, after_attach_fn_t cb, const void* rodata)
 {
     int err;
     char buf[100];
@@ -15,13 +34,11 @@ int ${OPERATION}${PROGNAME}(struct config *conf, after_attach_fn_t cb, bpf_obj_f
         return 1;
     }
 
-    if (obj_cb) {
-        err = obj_cb(obj);
-        if (err)
-        {
-            fprintf(stderr, "traffico: fail calling obj callback\n");
-            goto destroy_${PROGNAME};
-        }
+    // Set read-only data
+    if (set_${PROGNAME}_rodata(obj->obj, rodata))
+    {
+        log_err(conf, "fail: setting read-only value\n");
+        return 1;
     }
 
     err = ${PROGNAME}_bpf__load(obj);
