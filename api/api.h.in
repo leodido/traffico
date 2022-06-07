@@ -78,7 +78,7 @@ int exit_after_attach(struct bpf_tc_hook hook, struct bpf_tc_opts opts)
 }
 
 /// non-existing programs
-int ${OPERATION}0(struct args *conf, after_attach_fn_t cb, bpf_obj_fn_t obj_cb)
+int ${OPERATION}0(struct config *conf, after_attach_fn_t cb, bpf_obj_fn_t obj_cb)
 {
     return 1;
 }
