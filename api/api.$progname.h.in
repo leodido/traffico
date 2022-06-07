@@ -1,6 +1,8 @@
 #include "${PROGNAME}.skel.h"
 
-int ${OPERATION}${PROGNAME}(struct config *conf, after_attach_fn_t cb, bpf_obj_fn_t obj_cb)
+#define ${PROGNAME}_has_rodata ${PROGNAME_WITH_RODATA}
+
+int ${OPERATION}${PROGNAME}(struct config *conf, after_attach_fn_t cb, const void* rodata)
 {
     int err;
     char buf[100];
@@ -15,14 +17,28 @@ int ${OPERATION}${PROGNAME}(struct config *conf, after_attach_fn_t cb, bpf_obj_f
         return 1;
     }
 
-    if (obj_cb) {
-        err = obj_cb(obj);
-        if (err)
-        {
-            fprintf(stderr, "traffico: fail calling obj callback\n");
-            goto destroy_${PROGNAME};
-        }
+    // Set read-only data
+#if ${PROGNAME}_has_rodata
+    struct bpf_map *m = bpf_object__find_map_by_name(obj->obj, ".rodata");
+    if (!m || !bpf_map__is_internal(m))
+    {
+        log_err(conf, "fail: finding the .rodata map\n");
+        return 1;
     }
+    const char *m_name = bpf_map__name(m);
+    size_t m_size = bpf_map__value_size(m);
+    log_out(conf, "done: finding the %s map (size %d)\n", m_name, m_size);
+    err = bpf_map__set_initial_value(m, rodata, m_size);
+    if (err)
+    {
+        free(m);
+        log_err(conf, "fail: setting the %s map\n", m_name);
+        return 1;
+    }
+    log_out(conf, "done: setting the %s map\n", m_name);
+#else
+    log_out(conf, "done: moving on: no .rodata map\n");
+#endif
 
     err = ${PROGNAME}_bpf__load(obj);
     if (err)

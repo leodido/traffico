@@ -244,5 +244,8 @@ int main(int argc, char **argv)
 
     // Execute
     log_info("prog: %s\n", g_programs_name[g_config.program]);
-    return attach(&g_config, &await, NULL);
+    __u32 input = 16843010;
+    __u8 *val = malloc(4);
+    memcpy(val, &input, 4); // memset(val, 1, 4);
+    return attach(&g_config, &await, val);
 }
