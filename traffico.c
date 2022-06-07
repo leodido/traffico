@@ -197,7 +197,11 @@ void sig_handler(int signo)
 
 static int libbpf_print_fn(enum libbpf_print_level level, const char *format, va_list args)
 {
+#ifndef NDEBUG
     return print_log(g_config.err_stream, level == LIBBPF_DEBUG && g_config.verbose, false, format, args);
+#else
+    return 0;
+#endif
 }
 
 int await(struct bpf_tc_hook hook, struct bpf_tc_opts opts)
