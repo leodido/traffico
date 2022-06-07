@@ -202,6 +202,11 @@ void sig_handler(int signo)
 
 static int libbpf_print_fn(enum libbpf_print_level level, const char *format, va_list args)
 {
+#ifdef NDEBUG
+    // In release builds, only suppress debug-level verbosity
+    if (level == LIBBPF_DEBUG)
+        return 0;
+#endif
     return print_log(g_config.err_stream, level == LIBBPF_DEBUG && g_config.verbose, false, format, args);
 }
 
