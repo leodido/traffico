@@ -8,7 +8,7 @@ rule("bpf")
     set_extensions(".bpf.c")
     on_config(function (target)
         assert(is_host("linux"), 'rule("bpf"): only supported on linux!')
-        local headerdir = path.join(target:autogendir(), "rules", "bpf")
+        local headerdir = path.join(target:autogendir())
         if not os.isdir(headerdir) then
             os.mkdir(headerdir)
         end
@@ -22,8 +22,8 @@ rule("bpf")
             bpftool = filecfg.bpftool
         end
 
-        local headerfile = path.join(target:autogendir(), "rules", "bpf", (path.filename(sourcefile):gsub("%.bpf%.c", ".skel.h")))
-        local objectfile = path.join(target:autogendir(), "rules", "bpf", (path.filename(sourcefile):gsub("%.bpf%.c", ".bpf.o")))
+        local headerfile = path.join(target:autogendir(), (path.filename(sourcefile):gsub("%.bpf%.c", ".skel.h")))
+        local objectfile = path.join(target:autogendir(), (path.filename(sourcefile):gsub("%.bpf%.c", ".bpf.o")))
         local targetarch
         if target:is_arch("x86_64", "i386") then
             targetarch = "__TARGET_ARCH_x86"

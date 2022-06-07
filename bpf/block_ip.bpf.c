@@ -5,7 +5,6 @@
 
 char LICENSE[] SEC("license") = "Dual BSD/GPL";
 
-// TODO > make this easy to configure via config struct
 const volatile __u32 input = 0; // address to block (host byte order)
 
 SEC("tc")

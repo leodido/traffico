@@ -53,7 +53,7 @@ int block_private_ipv4(struct __sk_buff *skb)
 
     struct iphdr *ip_header = data + l3_offset;
     const int l4_offset = l3_offset + sizeof(*ip_header);
-    
+
     if (data + l4_offset > data_end)
     {
         bpf_printk("classifier: [iph] size lenght check hit: continue");
