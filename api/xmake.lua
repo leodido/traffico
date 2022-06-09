@@ -8,7 +8,7 @@ includes("xmake/repos.lua")
 add_rules("mode.release", "mode.debug")
 
 -- target to generate API components for every BPF program
-target("every.api")
+target("every-api")
     set_kind("headeronly")
     includes("../bpf")
     add_deps("bpf")
@@ -23,10 +23,10 @@ target("every.api")
 -- target to generate the API
 target("api")
     set_kind("headeronly")
-    add_deps("every.api")
+    add_deps("every-api")
     on_config(function(target)
         import("xmake.modules.api", { rootdir = os.projectdir() })
-        api(target, "every.api", true)
+        api(target, "every-api", true)
 
         import("actions.config.configfiles", { alias = "gen_configfiles", rootdir = os.programdir() })
         gen_configfiles()
