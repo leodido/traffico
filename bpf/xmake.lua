@@ -15,6 +15,7 @@ rule("bpf")
         target:add("includedirs", headerdir, { interface = true })
     end)
     before_buildcmd_file(function (target, batchcmds, sourcefile, opt)
+        
         local filecfg = target:fileconfig(sourcefile)
         local bpftool = "bpftool"
         if filecfg and filecfg.bpftool then
@@ -36,6 +37,7 @@ rule("bpf")
             targetarch = "__TARGET_ARCH_powerpc"
         end
         target:add("includedirs", path.directory(headerfile), { interface = true })
+
         target:set("optimize", "faster")
         batchcmds:show_progress(opt.progress, "${color.build.object}compiling.bpf %s", sourcefile)
         batchcmds:mkdir(path.directory(objectfile))
