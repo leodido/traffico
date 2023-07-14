@@ -1,4 +1,4 @@
-set_xmakever("2.6.1") -- Minimum version to compile BPF source correctly
+set_xmakever("2.8.2") -- Minimum version to compile BPF source correctly
 
 -- includes
 includes("xmake/repos.lua")
