@@ -14,4 +14,5 @@ RUN echo '%vscode ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
 USER vscode
 
 RUN git clone https://aur.archlinux.org/yay.git && cd yay && makepkg --noconfirm -si
-RUN yay --noconfirm -S xmake
+RUN curl -fsSL https://xmake.io/shget.text | bash -s dev
+RUN source $HOME/.xmake/profile
