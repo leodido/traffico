@@ -22,9 +22,9 @@ jobs:
             curl iproute2 iputils-ping
 
       - name: Install xmake
-        uses: xmake-io/github-action-setup-xmake@19d5bff7e8a05604925c02f20307db87adb5665b # v1.0.13
-        with:
-          xmake-version: "3.0.8"
+        run: |
+          curl -fsSL https://xmake.io/shget.text | bash
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       - name: Configure
         run: xmake f -y --generate-vmlinux=y --require-bpftool=y
@@ -50,7 +50,7 @@ jobs:
           pacman -Syy --noconfirm
           pacman -S --noconfirm \
             clang llvm gcc linux-headers bpf \
-            make cmake xmake \
+            make cmake xmake sudo \
             curl iproute2 iputils
 
       - name: Configure
