@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  ubuntu:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            clang llvm gcc \
+            linux-headers-$(uname -r) \
+            libelf-dev zlib1g-dev \
+            curl iproute2 iputils-ping
+
+      - name: Install xmake
+        uses: xmake-io/github-action-setup-xmake@19d5bff7e8a05604925c02f20307db87adb5665b # v1.0.13
+        with:
+          xmake-version: "3.0.8"
+
+      - name: Configure
+        run: xmake f -y --generate-vmlinux=y --require-bpftool=y
+
+      - name: Build
+        run: xmake build -y
+
+      - name: Test
+        run: xmake run test
+
+  archlinux:
+    runs-on: ubuntu-24.04
+    container:
+      image: archlinux:latest
+      options: --privileged
+    env:
+      XMAKE_ROOT: "y"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Install system dependencies
+        run: |
+          pacman -Syy --noconfirm
+          pacman -S --noconfirm \
+            clang llvm gcc linux-headers bpf \
+            make cmake xmake \
+            curl iproute2 iputils
+
+      - name: Configure
+        run: xmake f -y --generate-vmlinux=y
+
+      - name: Build
+        run: xmake build -y
+
+      - name: Test
+        run: xmake run test
