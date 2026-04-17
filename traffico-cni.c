@@ -1,6 +1,8 @@
 #define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <strings.h>
 #include <cjson/cJSON.h>
 #include <fcntl.h>
 #include <sched.h>
@@ -43,19 +45,16 @@ void print_cni_error(struct cni_error *err)
     printf("%s\n", cJSON_Print(error_obj));
 }
 
-#define BUFFERSIZE 10
 int get_stdin(char **text)
 {
-    *text = calloc(1, 1);
-    char *buffer[BUFFERSIZE];
-    while (fgets(buffer, BUFFERSIZE, stdin))
+    size_t n = 0;
+    *text = NULL;
+    // '\0' delimiter: read until EOF (JSON input won't contain NUL bytes)
+    if (getdelim(text, &n, '\0', stdin) < 0)
     {
-        *text = realloc(*text, strlen(*text) + 1 + strlen(buffer));
-        if (*text == NULL)
-        {
-            return 1;
-        }
-        strncat(*text, buffer, strlen(buffer));
+        free(*text);
+        *text = NULL;
+        return 1;
     }
     return 0;
 }
@@ -108,9 +107,8 @@ int add_command()
     struct config config = {
         .verbose = false,
         .cleanup_on_exit = false,
+        .program = program_0,
     };
-
-    config.verbose = false;
 
     char *stdin_text;
     if (get_stdin(&stdin_text) != 0)
@@ -235,16 +233,16 @@ int add_command()
             break;
         }
     }
-    if (config.program == NULL)
+    if (config.program == program_0)
     {
         err.code = CNI_INVALID_NETWORK_CONFIG;
-        err.msg = "Unknwon program";
+        err.msg = "Unknown program";
         err.details = programName_str;
         print_cni_error(&err);
         return -1;
     }
 
-    strncpy(config.ifname, ifname->valuestring, strlen(ifname->valuestring));
+    snprintf(config.ifname, IF_NAMESIZE, "%s", ifname->valuestring);
 
     if (attach(&config, exit_after_attach, NULL) != 0)
     {

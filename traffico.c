@@ -1,9 +1,12 @@
 #include <signal.h>
 #include <stdio.h>
+#include <string.h>
+#include <strings.h>
 #include <errno.h>
 #include <net/if.h>
 #include <assert.h>
 #include <argp.h>
+#include <unistd.h>
 #include <bpf/libbpf.h>
 
 #include "api.h"
@@ -47,6 +50,45 @@ static struct config g_config;
 
 #define log_info(fmt, ...) \
     log_out(&g_config, fmt, ##__VA_ARGS__);
+
+int get_gateway_iface(char *interface)
+{
+    long dest, gateway;
+    char iface[IF_NAMESIZE];
+    char buf[4096];
+    FILE *file;
+
+    memset(iface, 0, sizeof(iface));
+    memset(buf, 0, sizeof(buf));
+
+    file = fopen("/proc/net/route", "r");
+    if (!file)
+    {
+        return -1;
+    }
+
+    while (fgets(buf, sizeof(buf), file))
+    {
+        if (sscanf(buf, "%s %lx %lx", iface, &dest, &gateway) == 3)
+        {
+            // default route
+            if (dest == 0)
+            {
+                // note > gateway variable contains the address of the gateway
+                strcpy(interface, iface);
+                fclose(file);
+                return 0;
+            }
+        }
+    }
+
+    // default route not found
+    if (file)
+    {
+        fclose(file);
+    }
+    return -1;
+}
 
 static error_t parse_cli(int key, char *arg, struct argp_state *state)
 {
@@ -148,45 +190,6 @@ static const struct argp argp = {
     .args_doc = "PROGRAM",
     .doc = argp_program_doc,
 };
-
-int get_gateway_iface(char *interface)
-{
-    long dest, gateway;
-    char iface[IF_NAMESIZE];
-    char buf[4096];
-    FILE *file;
-
-    memset(iface, 0, sizeof(iface));
-    memset(buf, 0, sizeof(buf));
-
-    file = fopen("/proc/net/route", "r");
-    if (!file)
-    {
-        return -1;
-    }
-
-    while (fgets(buf, sizeof(buf), file))
-    {
-        if (sscanf(buf, "%s %lx %lx", iface, &dest, &gateway) == 3)
-        {
-            // default route
-            if (dest == 0)
-            {
-                // note > gateway variable contains the address of the gateway
-                strcpy(interface, iface);
-                fclose(file);
-                return 0;
-            }
-        }
-    }
-
-    // default route not found
-    if (file)
-    {
-        fclose(file);
-    }
-    return -1;
-}
 
 static volatile sig_atomic_t g_stop;
 
