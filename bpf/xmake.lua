@@ -1,4 +1,4 @@
-set_xmakever("2.6.1") -- Minimum version to compile BPF source correctly
+set_xmakever("2.9.2") -- Minimum version for build.fence policy and BPF source compilation
 
 -- includes
 includes("../xmake/repos.lua")
@@ -66,7 +66,7 @@ add_requires("libbpf v0.8.0", { system = false })
 -- probe
 target("bpf")
     set_kind("object")
-    set_policy("build.across_targets_in_parallel", false)
+    set_policy("build.fence", true)
     includes("../tools")
     add_deps("bpftool")
     includes("../vmlinux")

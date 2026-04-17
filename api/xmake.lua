@@ -1,5 +1,5 @@
 
-set_xmakever("2.6.1") -- Minimum version to compile BPF source correctly
+set_xmakever("2.9.2") -- Minimum version for build.fence policy and BPF source compilation
 
 -- includes
 includes("../xmake/repos.lua")
