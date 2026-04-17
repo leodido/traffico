@@ -61,7 +61,7 @@ set_toolchains("@llvm")
 
 -- requirements
 add_requires("linux-headers")
-add_requires("libbpf v0.8.0", { system = false })
+add_requires("libbpf v1.5.0", { system = false })
 
 -- probe
 target("bpf")
