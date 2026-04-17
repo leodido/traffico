@@ -50,7 +50,7 @@ jobs:
           pacman -Syy --noconfirm
           pacman -S --noconfirm \
             clang llvm gcc linux-headers bpf \
-            make cmake xmake sudo \
+            make cmake xmake sudo diffutils \
             curl iproute2 iputils
 
       - name: Configure
