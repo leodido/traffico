@@ -13,6 +13,9 @@
 
 const char *argp_program_version = TOOL_NAME " 0.0";
 const char *argp_program_bug_address = "https://github.com/leodido/traffico/issues";
+// Visibility attribute needed to override glibc's weak symbol
+// when built with -fvisibility=hidden.
+__attribute__((visibility("default")))
 error_t argp_err_exit_status = 1;
 const char argp_program_doc[] =
     "\n"
@@ -155,8 +158,7 @@ static error_t parse_cli(int key, char *arg, struct argp_state *state)
     case ARGP_KEY_END:
         if (state->arg_num == 0)
         {
-            print_log(state->err_stream, true, true, "program name is mandatory\n\n", NULL);
-            argp_state_help(state, state->err_stream, ARGP_HELP_STD_HELP | ARGP_HELP_EXIT_ERR);
+            argp_error(state, "program name is mandatory");
         }
         if (g_config.program == program_0)
         {
@@ -223,7 +225,7 @@ int main(int argc, char **argv)
     char buf[100];
     buf[sizeof(buf) - 1] = '\0';
 
-    // CLI
+    argp_err_exit_status = 1;
     err = argp_parse(&argp, argc, argv, ARGP_IN_ORDER, NULL, NULL);
     if (err)
     {
