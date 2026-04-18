@@ -30,7 +30,7 @@ target("traffico-cni")
 target_end()
 
 -- test
-add_requires("bats v1.7.0", { system = false })
+add_requires("bats v1.11.1", { system = false })
 add_requires("mini_httpd", { system = false })
 target("test")
     set_kind("phony")
