@@ -49,9 +49,8 @@ teardown() {
     run ip netns exec "${NETNS}" tc qdisc show dev "${PEER}" clsact
     [ "$(echo $output | xargs)" == "qdisc clsact ffff: parent ffff:fff1" ]
     echo "# tc qdisc still there" >&3
-    run bpftool prog show name nop
-    OUT=${lines[0]##*: } >&3
-    [ "${OUT%%  *}" == "sched_cls" ]
+    run bpftool prog show --json name nop
+    [[ "$output" == *'"type":"sched_cls"'* ]]
     echo "# BPF program still there" >&3
     run ip netns exec "${NETNS}" tc qdisc del dev "${PEER}" clsact
 }
