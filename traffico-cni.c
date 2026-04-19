@@ -10,6 +10,7 @@
 #include <net/if.h>
 
 #include "api.h"
+#include "api/input_parse.h"
 
 enum cni_error_codes
 {
@@ -243,6 +244,36 @@ int add_command()
     }
 
     snprintf(config.ifname, IF_NAMESIZE, "%s", ifname->valuestring);
+
+    // Parse optional input field for programs with rodata
+    const cJSON *inputValue = NULL;
+    inputValue = cJSON_GetObjectItemCaseSensitive(jsonobj, "input");
+
+    if (inputValue != NULL && cJSON_IsString(inputValue))
+    {
+        const char *parse_err = NULL;
+        if (parse_input(&config, inputValue->valuestring, &parse_err) != 0)
+        {
+            err.code = CNI_INVALID_NETWORK_CONFIG;
+            err.msg = (char *)parse_err;
+            print_cni_error(&err);
+            return -1;
+        }
+    }
+    else if (inputValue != NULL)
+    {
+        err.code = CNI_INVALID_NETWORK_CONFIG;
+        err.msg = "'input' field must be a string";
+        print_cni_error(&err);
+        return -1;
+    }
+    else if (program_requires_input(config.program))
+    {
+        err.code = CNI_INVALID_NETWORK_CONFIG;
+        err.msg = "program requires an 'input' field";
+        print_cni_error(&err);
+        return -1;
+    }
 
     if (attach(&config, exit_after_attach) != 0)
     {
