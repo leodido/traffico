@@ -10,3 +10,15 @@ bats_require_minimum_version 1.7.0
     [ ! $status -eq 0 ]
     [[ "$output" == *'"msg":	"program does not accept input"'* ]]
 }
+
+@test "rejects missing input for block_ip" {
+    run bash -c 'echo '"'"'{"cniVersion":"0.4.0","name":"dummy","type":"traffico-cni","program":"block_ip","prevResult":{"cniVersion":"1.0.0","interfaces":[{"name":"lo"}],"ips":[],"routes":[],"dns":{}}}'"'"' | CNI_COMMAND=ADD traffico-cni'
+    [ ! $status -eq 0 ]
+    [[ "$output" == *"program requires an"*"input"*"field"* ]]
+}
+
+@test "rejects missing input for block_port" {
+    run bash -c 'echo '"'"'{"cniVersion":"0.4.0","name":"dummy","type":"traffico-cni","program":"block_port","prevResult":{"cniVersion":"1.0.0","interfaces":[{"name":"lo"}],"ips":[],"routes":[],"dns":{}}}'"'"' | CNI_COMMAND=ADD traffico-cni'
+    [ ! $status -eq 0 ]
+    [[ "$output" == *"program requires an"*"input"*"field"* ]]
+}
