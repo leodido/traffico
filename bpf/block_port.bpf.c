@@ -5,7 +5,7 @@
 
 char LICENSE[] SEC("license") = "Dual BSD/GPL";
 
-const volatile __u16 input = 0; // port to block (host byte order)
+const volatile __u16 input = 0; // destination port to block (host byte order)
 
 SEC("tc")
 int block_port(struct __sk_buff *skb)
