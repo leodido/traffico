@@ -42,6 +42,13 @@ Example usage:
 traffico --ifname=eth0 --at=INGRESS block_private_ipv4
 ```
 
+Programs that accept runtime input (marked `[input]` in `--help`) take it as a second positional argument:
+
+```bash
+traffico --ifname=eth0 block_ip 10.0.0.1
+traffico --ifname=eth0 block_port 443  # not yet implemented
+```
+
 ### traffico-cni
 
 `traffico-cni` is a meta CNI plugin that allows the traffico programs to be used in CNI.
@@ -57,6 +64,17 @@ used as a CLI tool.
     "type": "traffico-cni",
     "program": "block_private_ipv4",
     "attachPoint": "ingress"
+}
+```
+
+Programs that accept runtime input use the `"input"` field:
+
+```json
+{
+    "type": "traffico-cni",
+    "program": "block_ip",
+    "input": "10.0.0.1",
+    "attachPoint": "egress"
 }
 ```
 
@@ -103,7 +121,7 @@ Here's an example CNI config file featuring `traffico-cni`.
 |---|---|
 | `block_private_ipv4` | Blocks private IPv4 addresses subnets allowing only SSH access on port 22 |
 | `block_ip` | Drops packets with destination equal to the input IPv4 address |
-| `block_port` | Drops packets with the destination port equal to the input port number |
+| `block_port` | Drops packets with the destination port equal to the input port number (not yet implemented) |
 | `nop` | A simple program that does nothing |
 
 ## Build
