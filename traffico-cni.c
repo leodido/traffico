@@ -43,7 +43,10 @@ void print_cni_error(struct cni_error *err)
     else
         cJSON_AddStringToObject(error_obj, "details", err->msg);
 
-    printf("%s\n", cJSON_Print(error_obj));
+    char *rendered = cJSON_Print(error_obj);
+    printf("%s\n", rendered);
+    free(rendered);
+    cJSON_Delete(error_obj);
 }
 
 int get_stdin(char **text)
@@ -62,6 +65,10 @@ int get_stdin(char **text)
 
 int add_command()
 {
+    int ret = -1;
+    char *stdin_text = NULL;
+    cJSON *jsonobj = NULL;
+
     struct cni_error err;
     err.cni_version = "1.0.0";
     err.msg = "";
@@ -73,23 +80,22 @@ int add_command()
         .program = program_0,
     };
 
-    char *stdin_text;
     if (get_stdin(&stdin_text) != 0)
     {
         err.code = CNI_IO_FAILURE;
         err.msg = "Error reading stdin";
         print_cni_error(&err);
-        return -1;
+        goto cleanup;
     }
 
-    cJSON *jsonobj = cJSON_Parse(stdin_text);
+    jsonobj = cJSON_Parse(stdin_text);
 
     if (jsonobj == NULL)
     {
         err.msg = "Error parsing JSON";
         err.code = CNI_FAILED_DECODE_CONTENT;
         print_cni_error(&err);
-        return -1;
+        goto cleanup;
     }
 
     const cJSON *cniVersion = NULL;
@@ -109,7 +115,7 @@ int add_command()
         err.code = CNI_INVALID_NETWORK_CONFIG;
         err.msg = "Missing or invalid field 'program'";
         print_cni_error(&err);
-        return -1;
+        goto cleanup;
     }
 
     programName_str = programName->valuestring;
@@ -140,7 +146,7 @@ int add_command()
         err.code = CNI_INVALID_NETWORK_CONFIG;
         err.msg = "Could not find prevResult in JSON";
         print_cni_error(&err);
-        return -1;
+        goto cleanup;
     }
 
     const cJSON *interfaces = NULL;
@@ -151,7 +157,7 @@ int add_command()
         err.code = CNI_INVALID_NETWORK_CONFIG;
         err.msg = "Failed to get interfaces";
         print_cni_error(&err);
-        return -1;
+        goto cleanup;
     }
 
     const cJSON *interface = NULL;
@@ -162,7 +168,7 @@ int add_command()
         err.code = CNI_INVALID_NETWORK_CONFIG;
         err.msg = "Failed to get default interface";
         print_cni_error(&err);
-        return -1;
+        goto cleanup;
     }
 
     const cJSON *ifname = NULL;
@@ -173,7 +179,7 @@ int add_command()
         err.code = CNI_INVALID_NETWORK_CONFIG;
         err.msg = "Failed to get ifname";
         print_cni_error(&err);
-        return -1;
+        goto cleanup;
     }
 
     int ifindex = if_nametoindex(ifname->valuestring);
@@ -183,7 +189,7 @@ int add_command()
         err.code = CNI_INVALID_NETWORK_CONFIG;
         err.msg = "Failed to retrieve ifindex";
         print_cni_error(&err);
-        return -1;
+        goto cleanup;
     }
     config.ifindex = ifindex;
 
@@ -202,7 +208,7 @@ int add_command()
         err.msg = "Unknown program";
         err.details = programName_str;
         print_cni_error(&err);
-        return -1;
+        goto cleanup;
     }
 
     snprintf(config.ifname, IF_NAMESIZE, "%s", ifname->valuestring);
@@ -219,7 +225,7 @@ int add_command()
             err.code = CNI_INVALID_NETWORK_CONFIG;
             err.msg = (char *)parse_err;
             print_cni_error(&err);
-            return -1;
+            goto cleanup;
         }
     }
     else if (inputValue != NULL)
@@ -227,14 +233,14 @@ int add_command()
         err.code = CNI_INVALID_NETWORK_CONFIG;
         err.msg = "'input' field must be a string";
         print_cni_error(&err);
-        return -1;
+        goto cleanup;
     }
     else if (program_requires_input(config.program))
     {
         err.code = CNI_INVALID_NETWORK_CONFIG;
         err.msg = "program requires an 'input' field";
         print_cni_error(&err);
-        return -1;
+        goto cleanup;
     }
 
     if (attach(&config, exit_after_attach) != 0)
@@ -242,21 +248,26 @@ int add_command()
         err.code = CNI_INVALID_NETWORK_CONFIG;
         err.msg = "Failed to attach BPF program";
         print_cni_error(&err);
-        return -1;
+        goto cleanup;
     }
 
-    char *string = NULL;
-    string = cJSON_Print(prevResult);
+    char *string = cJSON_Print(prevResult);
     if (string == NULL)
     {
         err.code = CNI_IO_FAILURE;
         err.msg = "Failed to prepare result for printing";
         print_cni_error(&err);
-        return -1;
+        goto cleanup;
     }
 
     printf("%s\n", string);
-    return 0;
+    free(string);
+    ret = 0;
+
+cleanup:
+    cJSON_Delete(jsonobj);
+    free(stdin_text);
+    return ret;
 }
 
 int plugin_main()
