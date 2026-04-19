@@ -41,7 +41,7 @@ int block_private_ipv4(struct __sk_buff *skb)
 
     if (data + l3_offset > data_end)
     {
-        bpf_printk("classifier: [eth] size lenght check hit: continue");
+        bpf_printk("classifier: [eth] size length check hit: continue");
         return TC_ACT_OK;
     }
 
@@ -56,7 +56,7 @@ int block_private_ipv4(struct __sk_buff *skb)
 
     if (data + l4_offset > data_end)
     {
-        bpf_printk("classifier: [iph] size lenght check hit: continue");
+        bpf_printk("classifier: [iph] size length check hit: continue");
         return TC_ACT_OK;
     }
 
@@ -77,7 +77,7 @@ int block_private_ipv4(struct __sk_buff *skb)
 
     if (data + l7_offset > data_end)
     {
-        bpf_printk("classifier: [tcph] size lenght check hit: continue");
+        bpf_printk("classifier: [tcph] size length check hit: continue");
         return TC_ACT_OK;
     }
 
