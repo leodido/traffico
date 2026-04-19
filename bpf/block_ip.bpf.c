@@ -18,7 +18,7 @@ int block_ip(struct __sk_buff *skb)
 
     if (data + l3_offset > data_end)
     {
-        bpf_printk("block_ip: [eth] size lenght check hit: continue");
+        bpf_printk("block_ip: [eth] size length check hit: continue");
         return TC_ACT_OK;
     }
 
@@ -32,7 +32,7 @@ int block_ip(struct __sk_buff *skb)
     const int l4_offset = l3_offset + sizeof(*ip_header);
     if (data + l4_offset > data_end)
     {
-        bpf_printk("block_ip: [iph] size lenght check hit: continue");
+        bpf_printk("block_ip: [iph] size length check hit: continue");
         return TC_ACT_OK;
     }
 
