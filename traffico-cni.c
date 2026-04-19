@@ -60,44 +60,6 @@ int get_stdin(char **text)
     return 0;
 }
 
-unsigned int string_to_ip_int(const char *ip)
-{
-    unsigned int ret = 0;
-    int i;
-    const char *start;
-
-    start = ip;
-    for (i = 0; i < 4; i++)
-    {
-        char c;
-        int n = 0;
-        while (1)
-        {
-            c = *start;
-            start++;
-            if (c >= '0' && c <= '9')
-            {
-                n *= 10;
-                n += c - '0';
-                continue;
-            }
-
-            if ((i < 3 && c == '.') || i == 3)
-            {
-                break;
-            }
-            return -1;
-        }
-        if (n >= 256)
-        {
-            return -1;
-        }
-        ret *= 256;
-        ret += n;
-    }
-    return ret;
-}
-
 int add_command()
 {
     struct cni_error err;
