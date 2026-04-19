@@ -73,13 +73,13 @@ int get_gateway_iface(char *interface)
 
     while (fgets(buf, sizeof(buf), file))
     {
-        if (sscanf(buf, "%s %lx %lx", iface, &dest, &gateway) == 3)
+        if (sscanf(buf, "%15s %lx %lx", iface, &dest, &gateway) == 3)
         {
             // default route
             if (dest == 0)
             {
                 // note > gateway variable contains the address of the gateway
-                strcpy(interface, iface);
+                snprintf(interface, IF_NAMESIZE, "%s", iface);
                 fclose(file);
                 return 0;
             }
@@ -122,7 +122,7 @@ static error_t parse_cli(int key, char *arg, struct argp_state *state)
             argp_error(state, "option '--%s' requires an existing interface: got '%s'\n", OPT_IFNAME_LONG, arg);
         }
         g_config.ifindex = ifindex;
-        strcpy(g_config.ifname, arg);
+        snprintf(g_config.ifname, IF_NAMESIZE, "%s", arg);
         break;
     case OPT_ATTACH_KEY:
         /**/ if (strncasecmp(arg, "egress", 6) == 0)
