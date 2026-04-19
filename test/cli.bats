@@ -66,6 +66,21 @@ teardown() {
     [ $status -eq 1 ]
 }
 
+@test "block_port blocks specific port" {
+    new_server
+    run ip netns exec "${NETNS}" curl --max-time 1 --silent "${VETH_ADDR}:${SERVER_PORT}" >/dev/null
+    [ $status -eq 0 ]
+    echo "# can reach ${VETH_ADDR}:${SERVER_PORT} from the namespace" >&3
+    run ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress block_port "${SERVER_PORT}" >/dev/null 3>&- &
+    sleep 1
+    run ip netns exec "${NETNS}" tc qdisc show dev "${PEER}" clsact
+    [ "$(echo $output | xargs)" == "qdisc clsact ffff: parent ffff:fff1" ]
+    run ip netns exec "${NETNS}" curl --max-time 1 --silent "${VETH_ADDR}:${SERVER_PORT}" >/dev/null
+    [ ! $status -eq 0 ]
+    echo "# cannot reach ${VETH_ADDR}:${SERVER_PORT} from the namespace" >&3
+    del_server
+}
+
 @test "block_private_ipv4 blocks ICMP packets" {
     run ip netns exec "${NETNS}" ping -W1 -4 -c1 10.22.1.2
     [ $status -eq 0 ]
