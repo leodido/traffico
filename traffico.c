@@ -10,6 +10,7 @@
 #include <bpf/libbpf.h>
 
 #include "api.h"
+#include "api/input_parse.h"
 
 const char *argp_program_version = TOOL_NAME " 0.0";
 const char *argp_program_bug_address = "https://github.com/leodido/traffico/issues";
@@ -144,15 +145,28 @@ static error_t parse_cli(int key, char *arg, struct argp_state *state)
     // Arguments
     case ARGP_KEY_ARG:
         assert(arg);
-        for (p = 0; p < NUM_PROGRAMS; p++)
+        if (state->arg_num == 0)
         {
-            if (strcasecmp(arg, g_programs_name[p]) == 0)
+            // First positional arg: program name
+            g_config.program_arg = arg;
+            for (p = 0; p < NUM_PROGRAMS; p++)
             {
-                g_config.program = (program_t)p;
-                break;
+                if (strcasecmp(arg, g_programs_name[p]) == 0)
+                {
+                    g_config.program = (program_t)p;
+                    break;
+                }
             }
         }
-        g_config.program_arg = arg;
+        else if (state->arg_num == 1)
+        {
+            // Second positional arg: input value (parsed in ARGP_KEY_FINI)
+            g_config.input_arg = arg;
+        }
+        else
+        {
+            argp_error(state, "too many arguments");
+        }
         break;
 
     case ARGP_KEY_END:
@@ -178,6 +192,20 @@ static error_t parse_cli(int key, char *arg, struct argp_state *state)
             g_config.ifindex = if_nametoindex(g_config.ifname);
             assert(g_config.ifindex != 0);
         }
+
+        // Parse input value based on the selected program
+        if (g_config.input_arg)
+        {
+            const char *err_msg = NULL;
+            if (parse_input(&g_config, g_config.input_arg, &err_msg) != 0)
+            {
+                argp_error(state, "%s: '%s'", err_msg, g_config.input_arg);
+            }
+        }
+        else if (program_requires_input(g_config.program))
+        {
+            argp_error(state, "program '%s' requires an input argument", g_programs_name[g_config.program]);
+        }
         break;
 
     default:
@@ -189,7 +217,7 @@ static error_t parse_cli(int key, char *arg, struct argp_state *state)
 static const struct argp argp = {
     .options = argp_opts,
     .parser = parse_cli,
-    .args_doc = "PROGRAM",
+    .args_doc = "PROGRAM [INPUT]",
     .doc = argp_program_doc,
 };
 
