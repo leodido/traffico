@@ -1,6 +1,6 @@
 #include "${PROGNAME}.skel.h"
 
-int ${OPERATION}${PROGNAME}(struct config *conf, after_attach_fn_t cb, bpf_obj_fn_t obj_cb)
+int ${OPERATION}${PROGNAME}(struct config *conf, after_attach_fn_t cb)
 {
     int err;
     char buf[100];
@@ -13,15 +13,6 @@ int ${OPERATION}${PROGNAME}(struct config *conf, after_attach_fn_t cb, bpf_obj_f
     {
         log_err(conf, "fail: opening the eBPF skeleton\n");
         return 1;
-    }
-
-    if (obj_cb) {
-        err = obj_cb(obj);
-        if (err)
-        {
-            fprintf(stderr, "traffico: fail calling obj callback\n");
-            goto destroy_${PROGNAME};
-        }
     }
 
     err = ${PROGNAME}_bpf__load(obj);

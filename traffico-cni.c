@@ -244,7 +244,7 @@ int add_command()
 
     snprintf(config.ifname, IF_NAMESIZE, "%s", ifname->valuestring);
 
-    if (attach(&config, exit_after_attach, NULL) != 0)
+    if (attach(&config, exit_after_attach) != 0)
     {
         err.code = CNI_INVALID_NETWORK_CONFIG;
         err.msg = "Failed to attach BPF program";
