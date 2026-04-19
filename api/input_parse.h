@@ -28,6 +28,8 @@ static int parse_input(struct config *conf, const char *input_str, const char **
     {
         char *endptr;
         unsigned long port = strtoul(input_str, &endptr, 10);
+        // Port 0 is rejected: the BPF rodata default is 0, so allowing it
+        // would be indistinguishable from "no input provided".
         if (*endptr != '\0' || port == 0 || port > 65535)
         {
             *err_msg = "invalid port number";

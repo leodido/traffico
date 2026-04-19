@@ -15,7 +15,10 @@ int ${OPERATION}${PROGNAME}(struct config *conf, after_attach_fn_t cb)
         return 1;
     }
 
-    // Set read-only data (between open and load)
+    // Set read-only data (between open and load).
+    // Assumes each BPF program has exactly one const volatile global
+    // at offset 0 in .rodata. If a program adds more globals, this
+    // memcpy must account for their offsets.
 #if ${PROGNAME_WITH_RODATA}
     if (conf->has_input)
     {
