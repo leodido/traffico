@@ -27,8 +27,15 @@ struct config
     bool cleanup_on_exit;
     program_t program;
     char *program_arg;
+    char *input_arg;
     FILE *err_stream;
     FILE *out_stream;
+
+    bool has_input;
+    union {
+        __u32 ip;
+        __u16 port;
+    } input;
 };
 
 typedef int (*after_attach_fn_t)(struct bpf_tc_hook hook, struct bpf_tc_opts opts);

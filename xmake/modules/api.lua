@@ -1,5 +1,13 @@
 import("core.project.project")
 
+-- Map program names to their input union field in struct config.
+-- Programs in this table have const volatile rodata that can be
+-- configured at runtime via the input union in struct config.
+local input_fields = {
+    block_ip = "ip",
+    block_port = "port",
+}
+
 -- get sourcefiles
 function _get_programs(target_name)
     local programs = {}
@@ -30,7 +38,17 @@ function gen(target, source_target)
         local tempconf = path.join(os.tmpdir(), confname)
         os.tryrm(tempconf)
         os.cp(configfile_template_path, tempconf)
-        target:add("configfiles", tempconf, { variables = { PROGNAME = progname, OPERATION = "attach__" } })
+        local input_field = input_fields[progname]
+        local has_rodata = input_field and 1 or 0
+
+        target:add("configfiles", tempconf, {
+            variables = {
+                PROGNAME = progname,
+                OPERATION = "attach__",
+                PROGNAME_WITH_RODATA = has_rodata,
+                PROGNAME_INPUT_FIELD = input_field or "",
+            }
+        })
     end
 end
 
@@ -52,17 +70,22 @@ function main(target, components_target, banner)
     local op = vars[1].variables.OPERATION
     v["OPERATION"] = op
     
+    local descr = '"  - '
     local programs = {}
     table.insert(programs, "0")
-    for _, v in ipairs(vars) do
-        table.insert(programs, v.variables.PROGNAME)
+    for i, pv in ipairs(vars) do
+        table.insert(programs, pv.variables.PROGNAME)
+        descr = descr .. pv.variables.PROGNAME .. (pv.variables.PROGNAME_WITH_RODATA == 1 and ' [input]' or '')
+        if i ~= #vars then
+            descr = descr .. '\\n  - '
+        end
     end
     table.sort(programs)
     v["PROGRAMS_AS_SYMBOLS"] = 'program_' .. table.concat(programs, ", program_")
     v["PROGRAMS_AS_STRINGS"] = '"' .. table.concat(programs, '", "') .. '"'
     v["PROGRAMS_OPS_AS_SYMBOLS"] = op .. table.concat(programs, ', ' .. op)
     table.remove(programs, 1)
-    v["PROGRAMS_DESCRIPTION"] = '"  - ' .. table.concat(programs, '\\n  - ') .. '"'
+    v["PROGRAMS_DESCRIPTION"] = descr .. '"'
 
     local content = ""
     for i, c in ipairs(components) do
