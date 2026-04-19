@@ -47,7 +47,7 @@ USAGE
         Programs that accept runtime input (marked [input] in --help) take it
         as a second positional argument:
             traffico --ifname=eth0 block_ip 10.0.0.1
-            traffico --ifname=eth0 block_port 443  (not yet implemented)
+            traffico --ifname=eth0 block_port 443
 
     traffico-cni
         traffico-cni is a meta CNI plugin that allows the traffico programs to be used in CNI.
@@ -118,7 +118,7 @@ BUILT-IN PROGRAMS
         block_ip is a program that drops packets with destination equal to the
         input IPv4 address.
 
-    block_port (not yet implemented)
+    block_port
         block_port is a program that drops packets with the destination port
         equal to the input port number.
 

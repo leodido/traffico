@@ -46,7 +46,7 @@ Programs that accept runtime input (marked `[input]` in `--help`) take it as a s
 
 ```bash
 traffico --ifname=eth0 block_ip 10.0.0.1
-traffico --ifname=eth0 block_port 443  # not yet implemented
+traffico --ifname=eth0 block_port 443
 ```
 
 ### traffico-cni
@@ -121,7 +121,7 @@ Here's an example CNI config file featuring `traffico-cni`.
 |---|---|
 | `block_private_ipv4` | Blocks private IPv4 addresses subnets allowing only SSH access on port 22 |
 | `block_ip` | Drops packets with destination equal to the input IPv4 address |
-| `block_port` | Drops packets with the destination port equal to the input port number (not yet implemented) |
+| `block_port` | Drops packets with the destination port equal to the input port number |
 | `nop` | A simple program that does nothing |
 
 ## Build
