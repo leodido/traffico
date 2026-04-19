@@ -57,7 +57,7 @@ int block_port(struct __sk_buff *skb)
         return TC_ACT_OK;
     }
 
-    __u16 *dst_port_ptr = (__u16 *)(data + l4_offset + 2);
+    __u16 *dst_port_ptr = (__u16 *)(data + l4_offset + 2); // skip 2-byte src_port
     __u16 dst_port = bpf_ntohs(*dst_port_ptr);
 
     if (dst_port == input)
