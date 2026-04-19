@@ -43,7 +43,7 @@ int block_port(struct __sk_buff *skb)
         return TC_ACT_OK;
     }
 
-    // Only inspect TCP and UDP — both have dest port at the same offset
+    // Only inspect TCP and UDP (both have dest port at the same offset)
     if (ip_header->protocol != IPPROTO_TCP && ip_header->protocol != IPPROTO_UDP)
     {
         bpf_printk("block_port: [iph] protocol %d is not TCP/UDP: continue", ip_header->protocol);
