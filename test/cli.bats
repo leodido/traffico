@@ -19,6 +19,7 @@ teardown() {
     echo "# teardown:" >&3
 
     killall traffico &>/dev/null || true
+    del_server
     del_netdev
     del_netns "${NETNS}"
 }
@@ -78,7 +79,6 @@ teardown() {
     run ip netns exec "${NETNS}" curl --max-time 1 --silent "${VETH_ADDR}:${SERVER_PORT}" >/dev/null
     [ ! $status -eq 0 ]
     echo "# cannot reach ${VETH_ADDR}:${SERVER_PORT} from the namespace" >&3
-    del_server
 }
 
 @test "block_port does not block other ports" {
@@ -93,7 +93,6 @@ teardown() {
     run ip netns exec "${NETNS}" curl --max-time 1 --silent "${VETH_ADDR}:${SERVER_PORT}" >/dev/null
     [ $status -eq 0 ]
     echo "# can still reach ${VETH_ADDR}:${SERVER_PORT} (blocked port 9999, not ${SERVER_PORT})" >&3
-    del_server
 }
 
 @test "block_private_ipv4 blocks ICMP packets" {
