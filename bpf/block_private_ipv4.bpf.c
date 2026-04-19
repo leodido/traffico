@@ -25,7 +25,7 @@ static struct subnet blocked_subnets[] = {
     //  192.168.0.0/16
     {
         .subnet = 0xC0A80000,  // 192.168.0.0
-        .netmask = 0xFFF00000, // 255.240.0.0
+        .netmask = 0xFFFF0000, // 255.255.0.0
     },
 };
 
