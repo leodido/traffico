@@ -7,7 +7,7 @@ bats_require_minimum_version 1.7.0
 @test "help" {
     run traffico --help
     [ $status -eq 0 ]
-    [ "${lines[0]}" == 'Usage: traffico [OPTION...] PROGRAM' ]
+    [ "${lines[0]}" == 'Usage: traffico [OPTION...] PROGRAM [INPUT]' ]
 }
 
 @test "usage" {
@@ -63,4 +63,46 @@ bats_require_minimum_version 1.7.0
     [ ! $status -eq 0 ]
     [ $status -eq 1 ]
     [ "${lines[0]}" == "traffico: option '--at' requires one of the following values: INGRESS|EGRESS" ]
+}
+
+@test "missing input for block_ip" {
+    run traffico -i lo block_ip
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: program 'block_ip' requires an input argument" ]
+}
+
+@test "invalid IP for block_ip" {
+    run traffico -i lo block_ip not.an.ip
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: invalid IP address: 'not.an.ip'" ]
+}
+
+@test "missing input for block_port" {
+    run traffico -i lo block_port
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: program 'block_port' requires an input argument" ]
+}
+
+@test "invalid port for block_port" {
+    run traffico -i lo block_port abc
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: invalid port number: 'abc'" ]
+}
+
+@test "port out of range" {
+    run traffico -i lo block_port 99999
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: invalid port number: '99999'" ]
+}
+
+@test "input for program that doesn't need it" {
+    run traffico -i lo nop 1.2.3.4
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: program does not accept input: '1.2.3.4'" ]
+}
+
+@test "too many arguments" {
+    run traffico -i lo block_ip 1.2.3.4 extra
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: too many arguments" ]
 }
