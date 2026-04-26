@@ -132,6 +132,78 @@ teardown() {
     echo "# localhost still reachable (exempt from allow_ipv4)" >&3
 }
 
+@test "allow_dns permits DNS to approved resolver" {
+    # Start a TCP listener on port 53 (simulating a DNS resolver)
+    python3 -c "
+import socket, threading
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+s.bind(('${VETH_ADDR}', 53))
+s.listen(1)
+s.settimeout(5)
+try:
+    c, _ = s.accept()
+    c.send(b'ok')
+    c.close()
+except: pass
+s.close()
+" &
+    DNS_PID=$!
+    sleep 0.5
+    run ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress allow_dns "${VETH_ADDR}" >/dev/null 3>&- &
+    sleep 1
+    run ip netns exec "${NETNS}" tc qdisc show dev "${PEER}" clsact
+    [ "$(echo $output | xargs)" == "qdisc clsact ffff: parent ffff:fff1" ]
+    run ip netns exec "${NETNS}" curl --max-time 2 --silent "telnet://${VETH_ADDR}:53"
+    [ $status -eq 0 ]
+    echo "# DNS to approved resolver ${VETH_ADDR}:53 allowed" >&3
+    kill $DNS_PID 2>/dev/null || true
+}
+
+@test "allow_dns blocks DNS to other resolvers" {
+    # Start a TCP listener on port 53 (simulating an unauthorized resolver)
+    python3 -c "
+import socket
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+s.bind(('${VETH_ADDR}', 53))
+s.listen(1)
+s.settimeout(5)
+try:
+    c, _ = s.accept()
+    c.send(b'ok')
+    c.close()
+except: pass
+s.close()
+" &
+    DNS_PID=$!
+    sleep 0.5
+    # Allow DNS only to PEER_ADDR (not VETH_ADDR where the server is)
+    run ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress allow_dns "${PEER_ADDR}" >/dev/null 3>&- &
+    sleep 1
+    run ip netns exec "${NETNS}" tc qdisc show dev "${PEER}" clsact
+    [ "$(echo $output | xargs)" == "qdisc clsact ffff: parent ffff:fff1" ]
+    run ip netns exec "${NETNS}" curl --max-time 2 --silent "telnet://${VETH_ADDR}:53"
+    [ ! $status -eq 0 ]
+    echo "# DNS to ${VETH_ADDR}:53 blocked (only ${PEER_ADDR} allowed)" >&3
+    kill $DNS_PID 2>/dev/null || true
+}
+
+@test "allow_dns does not block non-DNS traffic" {
+    new_server
+    run ip netns exec "${NETNS}" curl --max-time 1 --silent "${VETH_ADDR}:${SERVER_PORT}" >/dev/null
+    [ $status -eq 0 ]
+    echo "# can reach ${VETH_ADDR}:${SERVER_PORT} from the namespace" >&3
+    # Allow DNS only to PEER_ADDR — but non-DNS traffic should still pass
+    run ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress allow_dns "${PEER_ADDR}" >/dev/null 3>&- &
+    sleep 1
+    run ip netns exec "${NETNS}" tc qdisc show dev "${PEER}" clsact
+    [ "$(echo $output | xargs)" == "qdisc clsact ffff: parent ffff:fff1" ]
+    run ip netns exec "${NETNS}" curl --max-time 1 --silent "${VETH_ADDR}:${SERVER_PORT}" >/dev/null
+    [ $status -eq 0 ]
+    echo "# non-DNS traffic to ${VETH_ADDR}:${SERVER_PORT} still works" >&3
+}
+
 @test "allow_port allows specific port" {
     new_server
     run ip netns exec "${NETNS}" curl --max-time 1 --silent "${VETH_ADDR}:${SERVER_PORT}" >/dev/null
