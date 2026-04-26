@@ -63,6 +63,56 @@ teardown() {
     echo "# cannot reach ${VETH_ADDR}:${SERVER_PORT} from the namespace" >&3
 }
 
+@test "allow_dns via CNI" {
+    python3 -c "
+import socket
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+s.bind(('${VETH_ADDR}', 53))
+s.listen(1)
+s.settimeout(5)
+try:
+    c, _ = s.accept()
+    c.send(b'ok')
+    c.close()
+except: pass
+s.close()
+" &
+    DNS_PID=$!
+    sleep 0.5
+    run ip netns exec "${NETNS}" curl --max-time 2 --silent "telnet://${VETH_ADDR}:53"
+    [ $status -eq 0 ]
+    echo "# can reach ${VETH_ADDR}:53 from the namespace" >&3
+    # Restart listener for the post-attach test
+    python3 -c "
+import socket
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+s.bind(('${VETH_ADDR}', 53))
+s.listen(1)
+s.settimeout(5)
+try:
+    c, _ = s.accept()
+    c.send(b'ok')
+    c.close()
+except: pass
+s.close()
+" &
+    DNS_PID=$!
+    sleep 0.5
+    echo "# installing allow_dns in the namespace" >&3
+    run ip netns exec "${NETNS}" bash -c "cat '$FIXTURE_ROOT/attach_allow_dns_in.json' | CNI_COMMAND=ADD traffico-cni"
+    [ $status -eq 0 ]
+    echo "# attach ok" >&3
+    run ip netns exec "${NETNS}" tc qdisc show dev peer0 clsact
+    [ "$(echo $output | xargs)" == "qdisc clsact ffff: parent ffff:fff1" ]
+    echo "# qdisc ok" >&3
+    run ip netns exec "${NETNS}" curl --max-time 2 --silent "telnet://${VETH_ADDR}:53"
+    [ $status -eq 0 ]
+    echo "# can still reach ${VETH_ADDR}:53 (approved resolver)" >&3
+    kill $DNS_PID 2>/dev/null || true
+}
+
 @test "allow_port via CNI" {
     run curl --max-time 1 --silent "${VETH_ADDR}:${SERVER_PORT}" >/dev/null
     [ $status -eq 0 ]
