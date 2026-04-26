@@ -5,6 +5,7 @@ import("core.project.project")
 -- configured at runtime via the input union in struct config.
 local input_fields = {
     allow_ipv4 = "ip",
+    allow_port = "port",
     block_ipv4 = "ip",
     block_port = "port",
 }
