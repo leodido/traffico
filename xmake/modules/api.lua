@@ -4,6 +4,7 @@ import("core.project.project")
 -- Programs in this table have const volatile rodata that can be
 -- configured at runtime via the input union in struct config.
 local input_fields = {
+    allow_ip = "ip",
     block_ipv4 = "ip",
     block_port = "port",
 }

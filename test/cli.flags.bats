@@ -65,6 +65,18 @@ bats_require_minimum_version 1.7.0
     [ "${lines[0]}" == "traffico: option '--at' requires one of the following values: INGRESS|EGRESS" ]
 }
 
+@test "missing input for allow_ip" {
+    run traffico -i lo allow_ip
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: program 'allow_ip' requires an input argument" ]
+}
+
+@test "invalid IP for allow_ip" {
+    run traffico -i lo allow_ip not.an.ip
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: invalid IP address: 'not.an.ip'" ]
+}
+
 @test "missing input for block_ipv4" {
     run traffico -i lo block_ipv4
     [ $status -eq 1 ]

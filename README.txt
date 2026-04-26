@@ -110,6 +110,11 @@ USAGE
 
 BUILT-IN PROGRAMS
 
+    allow_ip
+        allow_ip is a program that drops all packets except those with
+        destination equal to the input IPv4 address. Localhost (127.0.0.0/8)
+        traffic is always allowed.
+
     block_private_ipv4
         block_private_ipv4 is a program that can be used to block
         private IPv4 addresses subnets allowing only SSH access on port 22.
