@@ -1,0 +1,22 @@
+{
+    "cniVersion": "0.4.0",
+    "name": "dummy-network",
+    "prevResult": {
+        "cniVersion": "1.0.0",
+        "interfaces": [
+            {
+                "name": "peer0"
+            }
+        ],
+        "ips": [
+        ],
+        "routes": [
+        ],
+        "dns": {
+        }
+    },
+    "type": "traffico-cni",
+    "program": "allow_ip",
+    "input": "10.22.1.1",
+    "attachPoint": "egress"
+}

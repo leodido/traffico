@@ -95,6 +95,43 @@ teardown() {
     echo "# can still reach ${VETH_ADDR}:${SERVER_PORT} (blocked port 9999, not ${SERVER_PORT})" >&3
 }
 
+@test "allow_ip allows specific IP" {
+    new_server
+    run ip netns exec "${NETNS}" curl --max-time 1 --silent "${VETH_ADDR}:${SERVER_PORT}" >/dev/null
+    [ $status -eq 0 ]
+    echo "# can reach ${VETH_ADDR}:${SERVER_PORT} from the namespace" >&3
+    run ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress allow_ip "${VETH_ADDR}" >/dev/null 3>&- &
+    sleep 1
+    run ip netns exec "${NETNS}" tc qdisc show dev "${PEER}" clsact
+    [ "$(echo $output | xargs)" == "qdisc clsact ffff: parent ffff:fff1" ]
+    run ip netns exec "${NETNS}" curl --max-time 1 --silent "${VETH_ADDR}:${SERVER_PORT}" >/dev/null
+    [ $status -eq 0 ]
+    echo "# can still reach ${VETH_ADDR}:${SERVER_PORT} (allowed IP)" >&3
+}
+
+@test "allow_ip blocks other IPs" {
+    run ip netns exec "${NETNS}" ping -W1 -4 -c1 "${VETH_ADDR}"
+    [ $status -eq 0 ]
+    echo "# can reach ${VETH_ADDR} from the namespace" >&3
+    run ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress allow_ip "${PEER_ADDR}" >/dev/null 3>&- &
+    sleep 1
+    run ip netns exec "${NETNS}" tc qdisc show dev "${PEER}" clsact
+    [ "$(echo $output | xargs)" == "qdisc clsact ffff: parent ffff:fff1" ]
+    run ip netns exec "${NETNS}" ping -W1 -4 -c1 "${VETH_ADDR}"
+    [ $status -eq 1 ]
+    echo "# cannot reach ${VETH_ADDR} (only ${PEER_ADDR} allowed)" >&3
+}
+
+@test "allow_ip does not block localhost" {
+    run ip netns exec "${NETNS}" traffico -i lo --at egress allow_ip "${VETH_ADDR}" >/dev/null 3>&- &
+    sleep 1
+    run ip netns exec "${NETNS}" tc qdisc show dev lo clsact
+    [ "$(echo $output | xargs)" == "qdisc clsact ffff: parent ffff:fff1" ]
+    run ip netns exec "${NETNS}" ping -W1 -4 -c1 127.0.0.1
+    [ $status -eq 0 ]
+    echo "# localhost still reachable (exempt from allow_ip)" >&3
+}
+
 @test "block_private_ipv4 blocks ICMP packets" {
     run ip netns exec "${NETNS}" ping -W1 -4 -c1 10.22.1.2
     [ $status -eq 0 ]
