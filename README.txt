@@ -115,6 +115,11 @@ BUILT-IN PROGRAMS
         destination equal to the input IPv4 address. Localhost (127.0.0.0/8)
         traffic is always allowed.
 
+    allow_port
+        allow_port is a program that drops all TCP/UDP packets except those
+        with destination port equal to the input port number. Non-TCP/UDP
+        protocols (ICMP, etc.) are not affected.
+
     block_private_ipv4
         block_private_ipv4 is a program that can be used to block
         private IPv4 addresses subnets allowing only SSH access on port 22.
