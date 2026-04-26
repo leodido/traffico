@@ -110,6 +110,11 @@ USAGE
 
 BUILT-IN PROGRAMS
 
+    allow_dns
+        allow_dns is a program that drops DNS packets (UDP/TCP port 53)
+        not destined for the input IPv4 resolver address. Non-DNS traffic
+        is not affected.
+
     allow_ipv4
         allow_ipv4 allows IPv4 traffic to the input address, drops the
         rest. Non-IPv4 traffic passes through and should be constrained
