@@ -110,6 +110,11 @@ USAGE
 
 BUILT-IN PROGRAMS
 
+    allow_dns
+        allow_dns is a program that drops DNS packets (UDP/TCP port 53)
+        not destined for the input IPv4 resolver address. Non-DNS traffic
+        is not affected.
+
     allow_ip
         allow_ip is a program that drops all packets except those with
         destination equal to the input IPv4 address. Localhost (127.0.0.0/8)
