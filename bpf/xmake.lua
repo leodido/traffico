@@ -66,6 +66,7 @@ add_requires("libbpf v1.5.0", { system = false })
 -- probe
 target("bpf")
     set_kind("object")
+    set_symbols("none") -- BPF objects must not use -fvisibility=hidden (breaks libbpf map linkage)
     set_policy("build.fence", true)
     includes("../tools")
     add_deps("bpftool")
