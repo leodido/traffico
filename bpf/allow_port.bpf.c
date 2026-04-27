@@ -6,6 +6,9 @@
 char LICENSE[] SEC("license") = "Dual BSD/GPL";
 
 const volatile __u16 input = 0; // destination port to allow (host byte order)
+const volatile __u32 slot = 0;  // position in the chain (set by userspace)
+
+DEFINE_PROG_ARRAY();
 
 SEC("tc")
 int allow_port(struct __sk_buff *skb)
@@ -81,5 +84,5 @@ int allow_port(struct __sk_buff *skb)
         return TC_ACT_SHOT;
     }
 
-    return TC_ACT_OK;
+    tail_call_next(skb, slot);
 }
