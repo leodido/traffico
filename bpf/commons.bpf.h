@@ -70,4 +70,28 @@ struct trace_event_raw_bpf_trace_printk___x
     while (0)
 #endif
 
+/// Tail call support for program chaining.
+///
+/// Programs that participate in a chain define a prog_array map and use
+/// tail_call_next() instead of returning TC_ACT_OK at the end of their
+/// allow path. When used standalone (no chain), the map is empty and
+/// bpf_tail_call silently fails, falling through to TC_ACT_OK.
+/// When used in a chain, userspace reuses the dispatcher's prog_array
+/// map FD via bpf_map__reuse_fd() before loading the program.
+
+#define DEFINE_PROG_ARRAY()                              \
+    struct {                                             \
+        __uint(type, BPF_MAP_TYPE_PROG_ARRAY);           \
+        __uint(key_size, sizeof(__u32));                  \
+        __uint(value_size, sizeof(__u32));                \
+        __uint(max_entries, 8);                           \
+    } prog_array SEC(".maps")
+
+/// Tail-call the next program in the chain.
+/// If the tail call fails (empty slot = end of chain), falls through
+/// to TC_ACT_OK — the packet passed all filters and is allowed.
+#define tail_call_next(skb, slot)                        \
+    bpf_tail_call(skb, &prog_array, (slot) + 1);        \
+    return TC_ACT_OK
+
 #endif // TRAFFICO_BPF_COMMONS_H

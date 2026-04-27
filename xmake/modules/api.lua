@@ -11,13 +11,25 @@ local input_fields = {
     block_port = "port",
 }
 
+-- Internal BPF programs that are not user-facing.
+-- These are compiled and get skeletons but are excluded from the
+-- program list, enum, and dispatch table.
+local internal_programs = {
+    dispatcher = true,
+}
+
 -- get sourcefiles
 function _get_programs(target_name)
     local programs = {}
     for _, target in pairs(project.targets()) do
         if target:is_enabled() and target:name() == target_name then
             for _, src in pairs(target:sourcebatches()) do
-                table.join2(programs, src.sourcefiles)
+                for _, f in ipairs(src.sourcefiles) do
+                    local progname = string.match(path.basename(f), "(.+)%..+$")
+                    if not internal_programs[progname] then
+                        table.insert(programs, f)
+                    end
+                end
             end
         end
     end
