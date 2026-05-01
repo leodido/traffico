@@ -25,15 +25,15 @@ teardown() {
     del_server
 }
 
-@test "block_ip via CNI" {
+@test "block_ipv4 via CNI" {
     run curl --max-time 1 --silent "${VETH_ADDR}:${SERVER_PORT}" >/dev/null
     [ $status -eq 0 ]
     echo "# can reach ${VETH_ADDR}:${SERVER_PORT}" >&3
     run ip netns exec "${NETNS}" curl --max-time 1 --silent "${VETH_ADDR}:${SERVER_PORT}" >/dev/null
     [ $status -eq 0 ]
     echo "# can reach ${VETH_ADDR}:${SERVER_PORT} from the namespace" >&3
-    echo "# installing block_ip in the namespace" >&3
-    run ip netns exec "${NETNS}" bash -c "cat '$FIXTURE_ROOT/attach_block_ip_in.json' | CNI_COMMAND=ADD traffico-cni"
+    echo "# installing block_ipv4 in the namespace" >&3
+    run ip netns exec "${NETNS}" bash -c "cat '$FIXTURE_ROOT/attach_block_ipv4_in.json' | CNI_COMMAND=ADD traffico-cni"
     [ $status -eq 0 ]
     echo "# attach ok" >&3
     run ip netns exec "${NETNS}" tc qdisc show dev peer0 clsact

@@ -56,10 +56,10 @@ teardown() {
     run ip netns exec "${NETNS}" tc qdisc del dev "${PEER}" clsact
 }
 
-@test "block_ip blocks specific IP" {
+@test "block_ipv4 blocks specific IP" {
     run ip netns exec "${NETNS}" ping -W1 -4 -c1 "${VETH_ADDR}"
     [ $status -eq 0 ]
-    run ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress block_ip "${VETH_ADDR}" >/dev/null 3>&- &
+    run ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress block_ipv4 "${VETH_ADDR}" >/dev/null 3>&- &
     sleep 1
     run ip netns exec "${NETNS}" tc qdisc show dev "${PEER}" clsact
     [ "$(echo $output | xargs)" == "qdisc clsact ffff: parent ffff:fff1" ]
