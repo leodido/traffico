@@ -46,7 +46,7 @@ USAGE
 
         Programs that accept runtime input (marked [input] in --help) take it
         as a second positional argument:
-            traffico --ifname=eth0 block_ip 10.0.0.1
+            traffico --ifname=eth0 block_ipv4 10.0.0.1
             traffico --ifname=eth0 block_port 443
 
     traffico-cni
@@ -68,7 +68,7 @@ USAGE
 
         {
             "type": "traffico-cni",
-            "program": "block_ip",
+            "program": "block_ipv4",
             "input": "10.0.0.1",
             "attachPoint": "egress"
         }
@@ -114,8 +114,8 @@ BUILT-IN PROGRAMS
         block_private_ipv4 is a program that can be used to block
         private IPv4 addresses subnets allowing only SSH access on port 22.
 
-    block_ip
-        block_ip is a program that drops packets with destination equal to the
+    block_ipv4
+        block_ipv4 is a program that drops packets with destination equal to the
         input IPv4 address.
 
     block_port
