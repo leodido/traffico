@@ -29,16 +29,23 @@ int block_ipv4(struct __sk_buff *skb)
     }
 
     struct iphdr *ip_header = data + l3_offset;
-    const int l4_offset = l3_offset + sizeof(*ip_header);
-    if (data + l4_offset > data_end)
+    if (data + l3_offset + sizeof(*ip_header) > data_end)
     {
         bpf_printk("block_ipv4: [iph] size length check hit: continue");
         return TC_ACT_OK;
     }
 
-    if (ip_is_fragment(skb, l3_offset))
+    __u8 ihl = ip_header->ihl;
+    if (ihl < 5)
     {
-        bpf_printk("block_ipv4: [iph] is fragment: continue");
+        bpf_printk("block_ipv4: [iph] invalid IHL %d: continue", ihl);
+        return TC_ACT_OK;
+    }
+
+    const int l4_offset = l3_offset + (ihl * 4);
+    if (data + l4_offset > data_end)
+    {
+        bpf_printk("block_ipv4: [iph] IHL extends beyond packet: continue");
         return TC_ACT_OK;
     }
 
