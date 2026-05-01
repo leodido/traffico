@@ -41,34 +41,41 @@ int block_private_ipv4(struct __sk_buff *skb)
 
     if (data + l3_offset > data_end)
     {
-        bpf_printk("classifier: [eth] size length check hit: continue");
+        bpf_printk("block_private_ipv4: [eth] size length check hit: continue");
         return TC_ACT_OK;
     }
 
     if (eth->h_proto != bpf_htons(ETH_P_IP))
     {
-        bpf_printk("classifier: [eth] protocol is %d: continue", eth->h_proto);
+        bpf_printk("block_private_ipv4: [eth] protocol is %d: continue", eth->h_proto);
         return TC_ACT_OK;
     }
 
     struct iphdr *ip_header = data + l3_offset;
-    const int l4_offset = l3_offset + sizeof(*ip_header);
-
-    if (data + l4_offset > data_end)
+    if (data + l3_offset + sizeof(*ip_header) > data_end)
     {
-        bpf_printk("classifier: [iph] size length check hit: continue");
+        bpf_printk("block_private_ipv4: [iph] size length check hit: continue");
         return TC_ACT_OK;
     }
 
+    __u8 ihl = ip_header->ihl;
+    if (ihl < 5)
+    {
+        bpf_printk("block_private_ipv4: [iph] invalid IHL %d: continue", ihl);
+        return TC_ACT_OK;
+    }
+
+    const int l4_offset = l3_offset + (ihl * 4);
+
     if (ip_header->protocol == IPPROTO_ICMP)
     {
-        bpf_printk("classifier: [iph] is icmp, shot");
+        bpf_printk("block_private_ipv4: [iph] is icmp, shot");
         return TC_ACT_SHOT;
     }
 
-    if (ip_is_fragment(skb, l3_offset))
+    if (ip_is_subsequent_fragment(skb, l3_offset))
     {
-        bpf_printk("classifier: [iph] is fragment: continue");
+        bpf_printk("block_private_ipv4: [iph] subsequent fragment: continue");
         return TC_ACT_OK;
     }
 
@@ -77,7 +84,7 @@ int block_private_ipv4(struct __sk_buff *skb)
 
     if (data + l7_offset > data_end)
     {
-        bpf_printk("classifier: [tcph] size length check hit: continue");
+        bpf_printk("block_private_ipv4: [tcph] size length check hit: continue");
         return TC_ACT_OK;
     }
 
