@@ -30,6 +30,13 @@ static inline int ip_is_fragment(struct __sk_buff *skb, u64 nhoff)
     return load_half(skb, nhoff + offsetof(struct iphdr, frag_off)) & (IP_MF | IP_OFFSET);
 }
 
+/// Returns true only for subsequent fragments (offset > 0).
+/// First fragments (MF=1, offset=0) return false — they carry L4 headers.
+static inline int ip_is_subsequent_fragment(struct __sk_buff *skb, u64 nhoff)
+{
+    return load_half(skb, nhoff + offsetof(struct iphdr, frag_off)) & IP_OFFSET;
+}
+
 /// \brief Our own definition of the bpf_trace_printk tracepoint struct.
 ///
 /// Defining it we avoid depending on the latest vmlinux.h file.
