@@ -29,17 +29,24 @@ int block_port(struct __sk_buff *skb)
     }
 
     struct iphdr *ip_header = data + l3_offset;
-    const int l4_offset = l3_offset + sizeof(*ip_header);
-
-    if (data + l4_offset > data_end)
+    if (data + l3_offset + sizeof(*ip_header) > data_end)
     {
         bpf_printk("block_port: [iph] size length check hit: continue");
         return TC_ACT_OK;
     }
 
-    if (ip_is_fragment(skb, l3_offset))
+    __u8 ihl = ip_header->ihl;
+    if (ihl < 5)
     {
-        bpf_printk("block_port: [iph] is fragment: continue");
+        bpf_printk("block_port: [iph] invalid IHL %d: continue", ihl);
+        return TC_ACT_OK;
+    }
+
+    const int l4_offset = l3_offset + (ihl * 4);
+
+    if (ip_is_subsequent_fragment(skb, l3_offset))
+    {
+        bpf_printk("block_port: [iph] subsequent fragment: continue");
         return TC_ACT_OK;
     }
 
