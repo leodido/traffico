@@ -25,15 +25,15 @@ teardown() {
     del_server
 }
 
-@test "allow_ip via CNI" {
+@test "allow_ipv4 via CNI" {
     run curl --max-time 1 --silent "${VETH_ADDR}:${SERVER_PORT}" >/dev/null
     [ $status -eq 0 ]
     echo "# can reach ${VETH_ADDR}:${SERVER_PORT}" >&3
     run ip netns exec "${NETNS}" curl --max-time 1 --silent "${VETH_ADDR}:${SERVER_PORT}" >/dev/null
     [ $status -eq 0 ]
     echo "# can reach ${VETH_ADDR}:${SERVER_PORT} from the namespace" >&3
-    echo "# installing allow_ip in the namespace" >&3
-    run ip netns exec "${NETNS}" bash -c "cat '$FIXTURE_ROOT/attach_allow_ip_in.json' | CNI_COMMAND=ADD traffico-cni"
+    echo "# installing allow_ipv4 in the namespace" >&3
+    run ip netns exec "${NETNS}" bash -c "cat '$FIXTURE_ROOT/attach_allow_ipv4_in.json' | CNI_COMMAND=ADD traffico-cni"
     [ $status -eq 0 ]
     echo "# attach ok" >&3
     run ip netns exec "${NETNS}" tc qdisc show dev peer0 clsact

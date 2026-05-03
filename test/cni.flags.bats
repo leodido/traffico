@@ -22,8 +22,8 @@ cni_add() {
     [[ "$output" == *'"msg":	"program does not accept input"'* ]]
 }
 
-@test "rejects missing input for allow_ip" {
-    cni_add "allow_ip"
+@test "rejects missing input for allow_ipv4" {
+    cni_add "allow_ipv4"
     [ ! $status -eq 0 ]
     [[ "$output" == *"program requires an"*"input"*"field"* ]]
 }

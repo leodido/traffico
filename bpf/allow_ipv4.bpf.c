@@ -8,7 +8,7 @@ char LICENSE[] SEC("license") = "Dual BSD/GPL";
 const volatile __u32 input = 0; // address to allow (host byte order)
 
 SEC("tc")
-int allow_ip(struct __sk_buff *skb)
+int allow_ipv4(struct __sk_buff *skb)
 {
     void *data_end = (void *)(unsigned long long)skb->data_end;
     void *data = (void *)(unsigned long long)skb->data;
@@ -18,13 +18,13 @@ int allow_ip(struct __sk_buff *skb)
 
     if (data + l3_offset > data_end)
     {
-        bpf_printk("allow_ip: [eth] size length check hit: continue");
+        bpf_printk("allow_ipv4: [eth] size length check hit: continue");
         return TC_ACT_OK;
     }
 
     if (eth->h_proto != bpf_htons(ETH_P_IP))
     {
-        bpf_printk("allow_ip: [eth] protocol is %d: continue", eth->h_proto);
+        bpf_printk("allow_ipv4: [eth] protocol is %d: continue", eth->h_proto);
         return TC_ACT_OK;
     }
 
@@ -32,13 +32,13 @@ int allow_ip(struct __sk_buff *skb)
     const int l4_offset = l3_offset + sizeof(*ip_header);
     if (data + l4_offset > data_end)
     {
-        bpf_printk("allow_ip: [iph] size length check hit: continue");
+        bpf_printk("allow_ipv4: [iph] size length check hit: continue");
         return TC_ACT_OK;
     }
 
     if (ip_is_fragment(skb, l3_offset))
     {
-        bpf_printk("allow_ip: [iph] is fragment: continue");
+        bpf_printk("allow_ipv4: [iph] is fragment: continue");
         return TC_ACT_OK;
     }
 
@@ -47,13 +47,13 @@ int allow_ip(struct __sk_buff *skb)
     // Exempt localhost (127.0.0.0/8)
     if ((dest & 0xFF000000) == 0x7F000000)
     {
-        bpf_printk("allow_ip: [iph] destination is localhost: allow");
+        bpf_printk("allow_ipv4: [iph] destination is localhost: allow");
         return TC_ACT_OK;
     }
 
     if (dest != input)
     {
-        bpf_printk("allow_ip: [iph] destination address is not allowed: block");
+        bpf_printk("allow_ipv4: [iph] destination address is not allowed: block");
         return TC_ACT_SHOT;
     }
 

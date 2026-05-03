@@ -16,7 +16,7 @@
         }
     },
     "type": "traffico-cni",
-    "program": "allow_ip",
+    "program": "allow_ipv4",
     "input": "10.22.1.1",
     "attachPoint": "egress"
 }
