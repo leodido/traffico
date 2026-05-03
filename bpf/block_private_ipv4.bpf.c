@@ -32,7 +32,6 @@ static struct subnet blocked_subnets[] = {
 SEC("tc")
 int block_private_ipv4(struct __sk_buff *skb)
 {
-    bpf_printk("=============================================");
     void *data_end = (void *)(unsigned long long)skb->data_end;
     void *data = (void *)(unsigned long long)skb->data;
 
@@ -67,55 +66,63 @@ int block_private_ipv4(struct __sk_buff *skb)
 
     const int l4_offset = l3_offset + (ihl * 4);
 
-    if (ip_header->protocol == IPPROTO_ICMP)
-    {
-        bpf_printk("block_private_ipv4: [iph] is icmp, shot");
-        return TC_ACT_SHOT;
-    }
-
     if (ip_is_subsequent_fragment(skb, l3_offset))
     {
         bpf_printk("block_private_ipv4: [iph] subsequent fragment: continue");
         return TC_ACT_OK;
     }
 
-    struct tcphdr *tcp = (struct tcphdr *)(data + l4_offset);
-    const int l7_offset = l4_offset + sizeof(*tcp);
-
-    if (data + l7_offset > data_end)
-    {
-        bpf_printk("block_private_ipv4: [tcph] size length check hit: continue");
-        return TC_ACT_OK;
-    }
-
-    bpf_printk("daddr: %d", ip_header->daddr);
-    bpf_printk("saddr: %d", ip_header->saddr);
-
-    u16 tcp_dest_nl = bpf_ntohs(tcp->dest);
-    u16 tcp_source_nl = bpf_ntohs(tcp->source);
-
+    // Check destination against private subnets
+    u32 dest = ip_header->daddr;
+    bool is_private = false;
     for (int i = 0; i < sizeof(blocked_subnets) / sizeof(struct subnet); i++)
     {
         u32 netmask = bpf_htonl(blocked_subnets[i].netmask);
         u32 subnetip = bpf_htonl(blocked_subnets[i].subnet);
 
-        bpf_printk("ip_header->daddr & netmask: %d", ip_header->daddr & netmask);
-        bpf_printk("subnetip & netmask: %d", subnetip & netmask);
-        bpf_printk("tcp dest port: %d", tcp_dest_nl);
-        bpf_printk("tcp source port: %d", tcp_source_nl);
-
-        if ((ip_header->daddr & netmask) == (subnetip & netmask))
+        if ((dest & netmask) == (subnetip & netmask))
         {
-            if (tcp_source_nl == 22)
-            {
-                bpf_printk("even though it matched, the source port is 22, so we will allow it");
-                return TC_ACT_OK;
-            }
-
-            bpf_printk("daddr is on a blocked subnet, shot");
-            return TC_ACT_SHOT;
+            is_private = true;
+            break;
         }
     }
 
-    return TC_ACT_OK;
+    if (!is_private)
+    {
+        return TC_ACT_OK;
+    }
+
+    // Destination is a private subnet — block ICMP unconditionally
+    if (ip_header->protocol == IPPROTO_ICMP)
+    {
+        bpf_printk("block_private_ipv4: [iph] ICMP to private subnet: block");
+        return TC_ACT_SHOT;
+    }
+
+    // Only inspect TCP and UDP for port-22 exemption
+    if (ip_header->protocol != IPPROTO_TCP && ip_header->protocol != IPPROTO_UDP)
+    {
+        bpf_printk("block_private_ipv4: [iph] protocol %d to private subnet: block", ip_header->protocol);
+        return TC_ACT_SHOT;
+    }
+
+    // Both TCP and UDP headers start with src_port (u16) then dst_port (u16)
+    if (data + l4_offset + 4 > data_end)
+    {
+        bpf_printk("block_private_ipv4: [l4] size length check hit: continue");
+        return TC_ACT_OK;
+    }
+
+    __u16 *src_port_ptr = (__u16 *)(data + l4_offset);
+    __u16 src_port = bpf_ntohs(*src_port_ptr);
+
+    // Exempt SSH responses (source port 22) from private subnets
+    if (src_port == 22)
+    {
+        bpf_printk("block_private_ipv4: [l4] source port 22 from private subnet: allow");
+        return TC_ACT_OK;
+    }
+
+    bpf_printk("block_private_ipv4: [iph] destination is on a private subnet: block");
+    return TC_ACT_SHOT;
 }
