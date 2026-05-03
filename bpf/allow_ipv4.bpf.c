@@ -68,4 +68,5 @@ int allow_ipv4(struct __sk_buff *skb)
     }
 
     tail_call_next(skb, slot);
+    return TC_ACT_OK;
 }
