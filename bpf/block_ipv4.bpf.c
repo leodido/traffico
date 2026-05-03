@@ -35,8 +35,8 @@ int block_ipv4(struct __sk_buff *skb)
         return TC_ACT_OK;
     }
 
-    // daddr is in the fixed 20-byte IP header — no L4 offset or
-    // fragment handling needed. IHL validation is defense-in-depth.
+    // daddr is in the fixed 20-byte IP header: no L4 offset or fragment handling needed.
+    // IHL validation is defense-in-depth.
     __u8 ihl = ip_header->ihl;
     if (ihl < 5)
     {
