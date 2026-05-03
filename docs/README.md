@@ -154,3 +154,5 @@ To run the test suite you can do this:
 xmake -b test
 xmake run test
 ```
+
+The full test suite includes Scapy-backed advanced packet tests that exercise IP options, fragmentation, and protocol-specific behavior. These require the `python-scapy` (Arch) or `python3-scapy` (Ubuntu) package. If Scapy is not installed, the advanced tests are skipped automatically.
