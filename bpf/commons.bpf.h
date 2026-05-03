@@ -88,10 +88,9 @@ struct trace_event_raw_bpf_trace_printk___x
     } prog_array SEC(".maps")
 
 /// Tail-call the next program in the chain.
-/// If the tail call fails (empty slot = end of chain), falls through
-/// to TC_ACT_OK — the packet passed all filters and is allowed.
+/// If the tail call fails (empty slot = end of chain), execution
+/// continues to the next statement. Callers must return explicitly.
 #define tail_call_next(skb, slot)                        \
-    bpf_tail_call(skb, &prog_array, (slot) + 1);        \
-    return TC_ACT_OK
+    bpf_tail_call(skb, &prog_array, (slot) + 1)
 
 #endif // TRAFFICO_BPF_COMMONS_H
