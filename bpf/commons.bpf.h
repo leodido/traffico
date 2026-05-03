@@ -31,7 +31,7 @@ static inline int ip_is_fragment(struct __sk_buff *skb, u64 nhoff)
 }
 
 /// Returns true only for subsequent fragments (offset > 0).
-/// First fragments (MF=1, offset=0) return false — they carry L4 headers.
+/// First fragments (MF=1, offset=0) return false (they carry L4 headers).
 static inline int ip_is_subsequent_fragment(struct __sk_buff *skb, u64 nhoff)
 {
     return load_half(skb, nhoff + offsetof(struct iphdr, frag_off)) & IP_OFFSET;
