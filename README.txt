@@ -110,8 +110,8 @@ USAGE
 
 BUILT-IN PROGRAMS
 
-    allow_ip
-        allow_ip is a program that drops all packets except those with
+    allow_ipv4
+        allow_ipv4 is a program that drops all packets except those with
         destination equal to the input IPv4 address. Localhost (127.0.0.0/8)
         traffic is always allowed.
 
