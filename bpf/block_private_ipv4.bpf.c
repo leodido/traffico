@@ -92,7 +92,7 @@ int block_private_ipv4(struct __sk_buff *skb)
         return TC_ACT_OK;
     }
 
-    // Destination is a private subnet — block ICMP unconditionally
+    // Destination is a private subnet: block ICMP unconditionally
     if (ip_header->protocol == IPPROTO_ICMP)
     {
         bpf_printk("block_private_ipv4: [iph] ICMP to private subnet: block");
@@ -100,7 +100,7 @@ int block_private_ipv4(struct __sk_buff *skb)
     }
 
     // SSH exemption: allow TCP responses from port 22 on private subnets.
-    // SSH is TCP-only — no UDP exemption.
+    // SSH is TCP-only, no UDP exemption.
     if (ip_header->protocol == IPPROTO_TCP)
     {
         if (data + l4_offset + 4 > data_end)
