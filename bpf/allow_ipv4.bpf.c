@@ -18,8 +18,8 @@ int allow_ipv4(struct __sk_buff *skb)
 
     if (data + l3_offset > data_end)
     {
-        bpf_printk("allow_ipv4: [eth] size length check hit: continue");
-        return TC_ACT_OK;
+        bpf_printk("allow_ipv4: [eth] size length check hit: block");
+        return TC_ACT_SHOT;
     }
 
     if (eth->h_proto != bpf_htons(ETH_P_IP))
@@ -29,17 +29,24 @@ int allow_ipv4(struct __sk_buff *skb)
     }
 
     struct iphdr *ip_header = data + l3_offset;
-    const int l4_offset = l3_offset + sizeof(*ip_header);
-    if (data + l4_offset > data_end)
+    if (data + l3_offset + sizeof(*ip_header) > data_end)
     {
-        bpf_printk("allow_ipv4: [iph] size length check hit: continue");
-        return TC_ACT_OK;
+        bpf_printk("allow_ipv4: [iph] size length check hit: block");
+        return TC_ACT_SHOT;
     }
 
-    if (ip_is_fragment(skb, l3_offset))
+    __u8 ihl = ip_header->ihl;
+    if (ihl < 5)
     {
-        bpf_printk("allow_ipv4: [iph] is fragment: continue");
-        return TC_ACT_OK;
+        bpf_printk("allow_ipv4: [iph] invalid IHL %d: block", ihl);
+        return TC_ACT_SHOT;
+    }
+
+    const int l4_offset = l3_offset + (ihl * 4);
+    if (data + l4_offset > data_end)
+    {
+        bpf_printk("allow_ipv4: [iph] IHL extends beyond packet: block");
+        return TC_ACT_SHOT;
     }
 
     u32 dest = bpf_ntohl(ip_header->daddr);
