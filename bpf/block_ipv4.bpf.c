@@ -35,17 +35,12 @@ int block_ipv4(struct __sk_buff *skb)
         return TC_ACT_OK;
     }
 
+    // daddr is in the fixed 20-byte IP header — no L4 offset or
+    // fragment handling needed. IHL validation is defense-in-depth.
     __u8 ihl = ip_header->ihl;
     if (ihl < 5)
     {
         bpf_printk("block_ipv4: [iph] invalid IHL %d: continue", ihl);
-        return TC_ACT_OK;
-    }
-
-    const int l4_offset = l3_offset + (ihl * 4);
-    if (data + l4_offset > data_end)
-    {
-        bpf_printk("block_ipv4: [iph] IHL extends beyond packet: continue");
         return TC_ACT_OK;
     }
 
