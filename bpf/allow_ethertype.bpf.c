@@ -28,7 +28,7 @@ int allow_ethertype(struct __sk_buff *skb)
 
     // Linear scan of the allowed EtherTypes.
     // MAX_MULTI_VALUES is small (8), so a loop is fine.
-    for (__u8 i = 0; i < MAX_MULTI_VALUES; i++)
+    for (__u32 i = 0; i < MAX_MULTI_VALUES; i++)
     {
         if (i >= num_allowed)
             break;
