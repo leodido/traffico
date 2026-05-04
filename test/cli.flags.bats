@@ -238,3 +238,15 @@ bats_require_minimum_version 1.7.0
     [ $status -eq 1 ]
     [ "${lines[0]}" == "traffico: invalid EtherType hex value: '0x0000'" ]
 }
+
+@test "vlan symbolic name resolves to 0x8100" {
+    run traffico -i lo allow_ethertype "vlan+0x8100"
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: duplicate EtherType value: 'vlan+0x8100'" ]
+}
+
+@test "qinq symbolic name resolves to 0x88A8" {
+    run traffico -i lo allow_ethertype "qinq+0x88A8"
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: duplicate EtherType value: 'qinq+0x88A8'" ]
+}

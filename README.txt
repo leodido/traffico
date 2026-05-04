@@ -119,7 +119,8 @@ BUILT-IN PROGRAMS
         allow_ethertype is an L2 gatekeeper that drops Ethernet frames
         whose EtherType is not in the allowed set. Multiple EtherTypes
         can be specified by joining them with +. Symbolic names (ipv4,
-        ipv6, arp) and hex values (0x0800) are both supported.
+        ipv6, arp, vlan, qinq) and hex values (0x0800) are both
+        supported.
         Example: allow_ethertype ipv4+arp
 
         In a chain, allow_ethertype must be the first program. L3+
@@ -129,7 +130,8 @@ BUILT-IN PROGRAMS
 
         On VLAN-tagged networks (802.1Q), the outer EtherType is the
         VLAN tag protocol (0x8100), not the payload type. Include
-        0x8100 in the allowed set to avoid dropping tagged frames.
+        vlan in the allowed set to avoid dropping tagged frames.
+        For QinQ (802.1ad) double-tagged networks, also include qinq.
 
     allow_ipv4
         allow_ipv4 is a program that drops all packets except those with
