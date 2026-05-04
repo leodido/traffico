@@ -55,19 +55,26 @@ static int set_chain_rodata(struct bpf_map *rodata_map,
                             const void *input_val, size_t input_sz,
                             __u32 slot)
 {
+    if (!rodata_map)
+        return -EINVAL;
+
     size_t rodata_sz = bpf_map__value_size(rodata_map);
+
+    // Validate that the input fits in the rodata map
+    if (input_sz > rodata_sz)
+        return -ENOSPC;
+
+    size_t slot_offset = (input_sz + 3) & ~3;
+    if (slot_offset + sizeof(__u32) > rodata_sz)
+        return -ENOSPC;
+
     void *buf = calloc(1, rodata_sz);
     if (!buf)
         return -ENOMEM;
 
     // Layout: input at offset 0, slot at offset aligned to 4 bytes after input
     memcpy(buf, input_val, input_sz);
-    // slot is always a __u32 placed after the input field, aligned to 4 bytes
-    size_t slot_offset = (input_sz + 3) & ~3;
-    if (slot_offset + sizeof(__u32) <= rodata_sz)
-    {
-        memcpy((char *)buf + slot_offset, &slot, sizeof(slot));
-    }
+    memcpy((char *)buf + slot_offset, &slot, sizeof(slot));
 
     int err = bpf_map__set_initial_value(rodata_map, buf, rodata_sz);
     free(buf);
