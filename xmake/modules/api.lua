@@ -3,6 +3,11 @@ import("core.project.project")
 -- Map program names to their input union field in struct config.
 -- Programs in this table have const volatile rodata that can be
 -- configured at runtime via the input union in struct config.
+--
+-- Scalar programs use a plain string: "ip", "port".
+-- Multi-value programs use a table: { field = "ethertypes", multi = true }.
+-- The template uses PROGNAME_INPUT_FIELD for the union member name and
+-- PROGNAME_IS_MULTI_VALUE to distinguish array inputs from scalars.
 local input_fields = {
     allow_dns = "ip",
     allow_ipv4 = "ip",
@@ -53,7 +58,15 @@ function gen(target, source_target)
         local tempconf = path.join(os.tmpdir(), confname)
         os.tryrm(tempconf)
         os.cp(configfile_template_path, tempconf)
-        local input_field = input_fields[progname]
+        local raw = input_fields[progname]
+        local input_field = nil
+        local is_multi = false
+        if type(raw) == "string" then
+            input_field = raw
+        elseif type(raw) == "table" then
+            input_field = raw.field
+            is_multi = raw.multi or false
+        end
         local has_rodata = input_field and 1 or 0
 
         target:add("configfiles", tempconf, {
@@ -62,6 +75,7 @@ function gen(target, source_target)
                 OPERATION = "attach__",
                 PROGNAME_WITH_RODATA = has_rodata,
                 PROGNAME_INPUT_FIELD = input_field or "",
+                PROGNAME_IS_MULTI_VALUE = is_multi and 1 or 0,
             }
         })
     end
