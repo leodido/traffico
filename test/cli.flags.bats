@@ -142,3 +142,39 @@ bats_require_minimum_version 1.7.0
     [ $status -eq 1 ]
     [ "${lines[0]}" == "traffico: too many arguments" ]
 }
+
+@test "--chain with unknown program" {
+    run traffico -i lo --chain "xxx:1.2.3.4"
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: unknown program in chain: 'xxx'" ]
+}
+
+@test "--chain with missing input for program that requires it" {
+    run traffico -i lo --chain "allow_ipv4"
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: program 'allow_ipv4' in chain requires an input value (use name:value)" ]
+}
+
+@test "--chain with invalid input" {
+    run traffico -i lo --chain "allow_ipv4:not.an.ip"
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: invalid IP address: 'not.an.ip'" ]
+}
+
+@test "--chain with too many entries" {
+    run traffico -i lo --chain "nop,nop,nop,nop,nop,nop,nop,nop,nop"
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: chain exceeds maximum of 8 programs" ]
+}
+
+@test "--chain mutually exclusive with positional args" {
+    run traffico -i lo --chain "nop" nop
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: --chain and positional PROGRAM arguments are mutually exclusive" ]
+}
+
+@test "--chain with empty string" {
+    run traffico -i lo --chain ""
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: --chain requires at least one program" ]
+}
