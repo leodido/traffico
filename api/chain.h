@@ -19,14 +19,25 @@
 #define MAX_CHAIN_LEN 8
 #define BPFFS_BASE "/sys/fs/bpf/traffico"
 
+/// Maximum number of values in a multi-value input (ethertypes, protos).
+#define MAX_MULTI_VALUES 8
+
 /// A single entry in a chain: program type + input value.
 struct chain_entry
 {
     program_t program;
     bool has_input;
     union {
-        __u32 ip;
-        __u16 port;
+        __u32 ip;          // allow_ipv4, allow_dns, block_ipv4
+        __u16 port;        // allow_port, block_port
+        struct {
+            __u16 values[MAX_MULTI_VALUES];
+            __u8 count;
+        } ethertypes;      // allow_ethertype (future)
+        struct {
+            __u8 values[MAX_MULTI_VALUES];
+            __u8 count;
+        } protos;          // allow_proto (future)
     } input;
 };
 
