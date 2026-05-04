@@ -215,13 +215,18 @@ static error_t parse_cli(int key, char *arg, struct argp_state *state)
 
         if (g_chain_arg)
         {
-            // Parse chain: comma-separated "name:input" or "name" entries
-            char chain_buf[1024];
-            snprintf(chain_buf, sizeof(chain_buf), "%s", g_chain_arg);
+            // Parse chain: comma-separated "name:input" or "name" entries.
+            // Tokenize g_chain_arg directly — argp guarantees the pointer
+            // remains valid through ARGP_KEY_FINI.
             char *saveptr = NULL;
-            char *token = strtok_r(chain_buf, ",", &saveptr);
-            while (token && g_chain_len < MAX_CHAIN_LEN)
+            char *token = strtok_r(g_chain_arg, ",", &saveptr);
+            while (token)
             {
+                if (g_chain_len >= MAX_CHAIN_LEN)
+                {
+                    argp_error(state, "chain exceeds maximum of %d programs", MAX_CHAIN_LEN);
+                }
+
                 char *colon = strchr(token, ':');
                 char *prog_name = token;
                 char *input_str = NULL;
