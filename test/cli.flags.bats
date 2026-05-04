@@ -178,3 +178,39 @@ bats_require_minimum_version 1.7.0
     [ $status -eq 1 ]
     [ "${lines[0]}" == "traffico: --chain requires at least one program" ]
 }
+
+@test "missing input for allow_ethertype" {
+    run traffico -i lo allow_ethertype
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: program 'allow_ethertype' requires an input argument" ]
+}
+
+@test "unknown ethertype name" {
+    run traffico -i lo allow_ethertype xxx
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: unknown EtherType name: 'xxx'" ]
+}
+
+@test "invalid ethertype hex value" {
+    run traffico -i lo allow_ethertype 0xZZZZ
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: invalid EtherType hex value: '0xZZZZ'" ]
+}
+
+@test "duplicate ethertype values" {
+    run traffico -i lo allow_ethertype ipv4+ipv4
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: duplicate EtherType value: 'ipv4+ipv4'" ]
+}
+
+@test "trailing + in ethertype input" {
+    run traffico -i lo allow_ethertype "ipv4+"
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: input must not end with '+': 'ipv4+'" ]
+}
+
+@test "leading + in ethertype input" {
+    run traffico -i lo allow_ethertype "+ipv4"
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: input must not start with '+': '+ipv4'" ]
+}
