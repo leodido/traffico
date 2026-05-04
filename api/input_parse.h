@@ -36,11 +36,40 @@ static const struct proto_name g_proto_names[] = {
     {NULL, 0},
 };
 
+// Validate that a '+'-delimited input string has no empty tokens.
+// Rejects leading '+', trailing '+', and consecutive '++'.
+static int validate_delimited_input(const char *input_str, const char **err_msg)
+{
+    size_t len = strlen(input_str);
+    if (len == 0)
+        return 0; // Empty string handled by caller's count==0 check
+
+    if (input_str[0] == '+')
+    {
+        *err_msg = "input must not start with '+'";
+        return -1;
+    }
+    if (input_str[len - 1] == '+')
+    {
+        *err_msg = "input must not end with '+'";
+        return -1;
+    }
+    if (strstr(input_str, "++"))
+    {
+        *err_msg = "input contains empty value between '+' delimiters";
+        return -1;
+    }
+    return 0;
+}
+
 // Parse a '+'-delimited list of EtherTypes into conf->input.ethertypes.
 // Each token is a symbolic name (ipv4, arp, ipv6) or a 0x-prefixed hex value.
 // Returns 0 on success, -1 on error (with err_msg set).
 static int parse_ethertypes(struct config *conf, const char *input_str, const char **err_msg)
 {
+    if (validate_delimited_input(input_str, err_msg) != 0)
+        return -1;
+
     // Work on a mutable copy since strtok_r modifies the string
     char buf[256];
     if (strlen(input_str) >= sizeof(buf))
@@ -130,6 +159,9 @@ static int parse_ethertypes(struct config *conf, const char *input_str, const ch
 // Returns 0 on success, -1 on error (with err_msg set).
 static int parse_protos(struct config *conf, const char *input_str, const char **err_msg)
 {
+    if (validate_delimited_input(input_str, err_msg) != 0)
+        return -1;
+
     char buf[256];
     if (strlen(input_str) >= sizeof(buf))
     {
