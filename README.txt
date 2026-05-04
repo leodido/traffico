@@ -116,6 +116,13 @@ BUILT-IN PROGRAMS
         Non-IPv4 traffic passes through and should be constrained by L2
         or chain policy when needed.
 
+    allow_ethertype
+        allow_ethertype is an L2 gatekeeper that drops Ethernet frames
+        whose EtherType is not in the allowed set. Multiple EtherTypes
+        can be specified by joining them with +. Symbolic names (ipv4,
+        ipv6, arp) and hex values (0x0800) are both supported.
+        Example: allow_ethertype ipv4+arp
+
     allow_ipv4
         allow_ipv4 allows IPv4 traffic to the input address, drops the
         rest. Non-IPv4 traffic passes through and should be constrained
