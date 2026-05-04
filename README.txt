@@ -134,6 +134,18 @@ BUILT-IN PROGRAMS
         they are rejected because downstream L3/L4 programs cannot
         yet parse VLAN-encapsulated payloads.
 
+    allow_proto
+        allow_proto is an L3 gatekeeper that drops IPv4 packets whose IP
+        protocol is not in the allowed set. Non-IPv4 traffic passes
+        through (L2 filtering is allow_ethertype's job). Multiple
+        protocols can be specified by joining them with +. Symbolic
+        names (tcp, udp, icmp, sctp) and decimal numbers (6, 17) are
+        both supported.
+        Example: allow_proto tcp+udp
+
+        In a chain, allow_proto should be placed after allow_ethertype
+        and before allow_port (L2 -> L3 -> L4 ordering).
+
     allow_ipv4
         allow_ipv4 allows IPv4 traffic to the input address, drops the
         rest. Non-IPv4 traffic passes through and should be constrained
