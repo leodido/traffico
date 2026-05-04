@@ -13,6 +13,7 @@
 #include "api.h"
 #include "dispatcher.skel.h"
 #include "allow_dns.skel.h"
+#include "allow_ethertype.skel.h"
 #include "allow_ipv4.skel.h"
 #include "allow_port.skel.h"
 
@@ -264,6 +265,57 @@ static int load_chain_program(struct config *conf,
         log_out(conf, "done: loaded allow_dns at slot %d\n", slot);
         break;
     }
+    case program_allow_ethertype:
+    {
+        struct allow_ethertype_bpf *obj = allow_ethertype_bpf__open();
+        if (!obj)
+        {
+            log_err(conf, "fail: opening allow_ethertype skeleton\n");
+            return 1;
+        }
+
+        err = bpf_map__reuse_fd(obj->maps.prog_array, prog_array_fd);
+        if (err)
+        {
+            log_err(conf, "fail: reusing prog_array for allow_ethertype\n");
+            allow_ethertype_bpf__destroy(obj);
+            return 1;
+        }
+
+        if (entry->has_input)
+        {
+            err = set_chain_rodata(obj->maps.rodata,
+                                   &entry->input.ethertypes, sizeof(entry->input.ethertypes),
+                                   slot);
+            if (err)
+            {
+                log_err(conf, "fail: setting rodata for allow_ethertype\n");
+                allow_ethertype_bpf__destroy(obj);
+                return 1;
+            }
+        }
+
+        err = allow_ethertype_bpf__load(obj);
+        if (err)
+        {
+            libbpf_strerror(err, buf, sizeof(buf));
+            log_err(conf, "fail: loading allow_ethertype: %s\n", buf);
+            allow_ethertype_bpf__destroy(obj);
+            return 1;
+        }
+
+        int prog_fd = bpf_program__fd(obj->progs.allow_ethertype);
+        err = bpf_map_update_elem(prog_array_fd, &slot, &prog_fd, BPF_ANY);
+        if (err)
+        {
+            log_err(conf, "fail: inserting allow_ethertype into prog_array slot %d\n", slot);
+            allow_ethertype_bpf__destroy(obj);
+            return 1;
+        }
+
+        log_out(conf, "done: loaded allow_ethertype at slot %d\n", slot);
+        break;
+    }
     default:
         log_err(conf, "fail: program '%s' does not support chaining\n",
                 g_programs_name[entry->program]);
@@ -276,9 +328,10 @@ static int load_chain_program(struct config *conf,
 /// Returns true if the given program supports chaining.
 static inline bool program_supports_chaining(program_t program)
 {
-    return program == program_allow_ipv4 ||
-           program == program_allow_port ||
-           program == program_allow_dns;
+    return program == program_allow_dns ||
+           program == program_allow_ethertype ||
+           program == program_allow_ipv4 ||
+           program == program_allow_port;
 }
 
 /// Attach a chain of programs using the dispatcher + tail calls.
