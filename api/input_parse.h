@@ -19,6 +19,8 @@ static const struct ethertype_name g_ethertype_names[] = {
     {"ipv4", 0x0800},
     {"ipv6", 0x86DD},
     {"arp", 0x0806},
+    {"vlan", 0x8100},
+    {"qinq", 0x88A8},
     {NULL, 0},
 };
 

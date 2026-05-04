@@ -132,7 +132,7 @@ Here's an example CNI config file featuring `traffico-cni`.
 
 **Chain ordering:** In a chain, `allow_ethertype` must be the first program. L3+ programs (`allow_ipv4`, `allow_port`, etc.) pass through traffic outside their domain (e.g., non-IPv4 frames return `TC_ACT_OK` directly), which bypasses any downstream `allow_ethertype` filter.
 
-**VLAN-tagged networks:** On 802.1Q networks, the outer EtherType is the VLAN tag protocol identifier (`0x8100`), not the payload type. VLAN TPIDs (`0x8100`, `0x88A8`) are only supported in standalone mode. In chains, VLAN TPIDs are rejected because downstream L3/L4 programs cannot yet parse VLAN-encapsulated payloads.
+**VLAN-tagged networks:** Symbolic names `vlan` (0x8100) and `qinq` (0x88A8) are available. VLAN TPIDs are only supported in standalone mode. In chains, they are rejected because downstream L3/L4 programs cannot yet parse VLAN-encapsulated payloads. Example (standalone): `allow_ethertype ipv4+arp+vlan`.
 
 ## Build
 
