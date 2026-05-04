@@ -214,3 +214,21 @@ bats_require_minimum_version 1.7.0
     [ $status -eq 1 ]
     [ "${lines[0]}" == "traffico: input must not start with '+': '+ipv4'" ]
 }
+
+@test "consecutive ++ in ethertype input" {
+    run traffico -i lo allow_ethertype "ipv4++arp"
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: input contains empty value between '+' delimiters: 'ipv4++arp'" ]
+}
+
+@test "too many ethertype values" {
+    run traffico -i lo allow_ethertype "ipv4+ipv6+arp+0x8100+0x88A8+0x8847+0x8848+0x88CC+0x0842"
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: too many EtherType values: 'ipv4+ipv6+arp+0x8100+0x88A8+0x8847+0x8848+0x88CC+0x0842'" ]
+}
+
+@test "zero ethertype hex value" {
+    run traffico -i lo allow_ethertype 0x0000
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: invalid EtherType hex value: '0x0000'" ]
+}
