@@ -132,6 +132,47 @@ teardown() {
     echo "# localhost still reachable (exempt from allow_ipv4)" >&3
 }
 
+@test "allow_port allows specific port" {
+    new_server
+    run ip netns exec "${NETNS}" curl --max-time 1 --silent "${VETH_ADDR}:${SERVER_PORT}" >/dev/null
+    [ $status -eq 0 ]
+    echo "# can reach ${VETH_ADDR}:${SERVER_PORT} from the namespace" >&3
+    run ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress allow_port "${SERVER_PORT}" >/dev/null 3>&- &
+    sleep 1
+    run ip netns exec "${NETNS}" tc qdisc show dev "${PEER}" clsact
+    [ "$(echo $output | xargs)" == "qdisc clsact ffff: parent ffff:fff1" ]
+    run ip netns exec "${NETNS}" curl --max-time 1 --silent "${VETH_ADDR}:${SERVER_PORT}" >/dev/null
+    [ $status -eq 0 ]
+    echo "# can still reach ${VETH_ADDR}:${SERVER_PORT} (allowed port)" >&3
+}
+
+@test "allow_port blocks other ports" {
+    new_server
+    run ip netns exec "${NETNS}" curl --max-time 1 --silent "${VETH_ADDR}:${SERVER_PORT}" >/dev/null
+    [ $status -eq 0 ]
+    echo "# can reach ${VETH_ADDR}:${SERVER_PORT} from the namespace" >&3
+    run ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress allow_port 9999 >/dev/null 3>&- &
+    sleep 1
+    run ip netns exec "${NETNS}" tc qdisc show dev "${PEER}" clsact
+    [ "$(echo $output | xargs)" == "qdisc clsact ffff: parent ffff:fff1" ]
+    run ip netns exec "${NETNS}" curl --max-time 1 --silent "${VETH_ADDR}:${SERVER_PORT}" >/dev/null
+    [ ! $status -eq 0 ]
+    echo "# cannot reach ${VETH_ADDR}:${SERVER_PORT} (only port 9999 allowed)" >&3
+}
+
+@test "allow_port does not block ICMP" {
+    run ip netns exec "${NETNS}" ping -W1 -4 -c1 "${VETH_ADDR}"
+    [ $status -eq 0 ]
+    echo "# can ping ${VETH_ADDR} from the namespace" >&3
+    run ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress allow_port 9999 >/dev/null 3>&- &
+    sleep 1
+    run ip netns exec "${NETNS}" tc qdisc show dev "${PEER}" clsact
+    [ "$(echo $output | xargs)" == "qdisc clsact ffff: parent ffff:fff1" ]
+    run ip netns exec "${NETNS}" ping -W1 -4 -c1 "${VETH_ADDR}"
+    [ $status -eq 0 ]
+    echo "# can still ping ${VETH_ADDR} (ICMP not blocked by allow_port)" >&3
+}
+
 @test "block_private_ipv4 blocks ICMP packets" {
     run ip netns exec "${NETNS}" ping -W1 -4 -c1 10.22.1.2
     [ $status -eq 0 ]

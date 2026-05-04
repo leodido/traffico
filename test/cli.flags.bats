@@ -89,6 +89,18 @@ bats_require_minimum_version 1.7.0
     [ "${lines[0]}" == "traffico: invalid IP address: 'not.an.ip'" ]
 }
 
+@test "missing input for allow_port" {
+    run traffico -i lo allow_port
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: program 'allow_port' requires an input argument" ]
+}
+
+@test "invalid port for allow_port" {
+    run traffico -i lo allow_port abc
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: invalid port number: 'abc'" ]
+}
+
 @test "missing input for block_port" {
     run traffico -i lo block_port
     [ $status -eq 1 ]

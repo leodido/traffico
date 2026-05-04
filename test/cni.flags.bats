@@ -28,6 +28,12 @@ cni_add() {
     [[ "$output" == *"program requires an"*"input"*"field"* ]]
 }
 
+@test "rejects missing input for allow_port" {
+    cni_add "allow_port"
+    [ ! $status -eq 0 ]
+    [[ "$output" == *"program requires an"*"input"*"field"* ]]
+}
+
 @test "rejects missing input for block_ipv4" {
     cni_add "block_ipv4"
     [ ! $status -eq 0 ]
