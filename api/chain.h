@@ -100,7 +100,7 @@ static int load_chain_program(struct config *conf,
         err = bpf_map__reuse_fd(obj->maps.prog_array, prog_array_fd);
         if (err)
         {
-            log_err(conf, "fail: reusing prog_array for allow_ipv4v4v4\n");
+            log_err(conf, "fail: reusing prog_array for allow_ipv4\n");
             allow_ipv4_bpf__destroy(obj);
             return 1;
         }
@@ -113,7 +113,7 @@ static int load_chain_program(struct config *conf,
                                    slot);
             if (err)
             {
-                log_err(conf, "fail: setting rodata for allow_ipv4v4\n");
+                log_err(conf, "fail: setting rodata for allow_ipv4\n");
                 allow_ipv4_bpf__destroy(obj);
                 return 1;
             }
