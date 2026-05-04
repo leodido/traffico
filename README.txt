@@ -115,6 +115,13 @@ BUILT-IN PROGRAMS
         not destined for the input IPv4 resolver address. Non-DNS traffic
         is not affected.
 
+    allow_ethertype
+        allow_ethertype is an L2 gatekeeper that drops Ethernet frames
+        whose EtherType is not in the allowed set. Multiple EtherTypes
+        can be specified by joining them with +. Symbolic names (ipv4,
+        ipv6, arp) and hex values (0x0800) are both supported.
+        Example: allow_ethertype ipv4+arp
+
     allow_ipv4
         allow_ipv4 is a program that drops all packets except those with
         destination equal to the input IPv4 address. Localhost (127.0.0.0/8)
