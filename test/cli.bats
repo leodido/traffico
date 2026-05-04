@@ -327,6 +327,61 @@ s.close()
     echo "# can still ping ${VETH_ADDR} (0x0800+0x0806 allowed)" >&3
 }
 
+@test "allow_proto tcp+udp+icmp allows ping" {
+    run ip netns exec "${NETNS}" ping -W1 -4 -c1 "${VETH_ADDR}"
+    [ $status -eq 0 ]
+    echo "# can ping ${VETH_ADDR} from the namespace" >&3
+    run ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress allow_proto tcp+udp+icmp >/dev/null 3>&- &
+    sleep 1
+    run ip netns exec "${NETNS}" tc qdisc show dev "${PEER}" clsact
+    [ "$(echo $output | xargs)" == "qdisc clsact ffff: parent ffff:fff1" ]
+    run ip netns exec "${NETNS}" ping -W1 -4 -c1 "${VETH_ADDR}"
+    [ $status -eq 0 ]
+    echo "# can still ping ${VETH_ADDR} (icmp in allowed set)" >&3
+}
+
+@test "allow_proto tcp+udp blocks ping" {
+    run ip netns exec "${NETNS}" ping -W1 -4 -c1 "${VETH_ADDR}"
+    [ $status -eq 0 ]
+    echo "# can ping ${VETH_ADDR} from the namespace" >&3
+    # Allow only TCP and UDP — ICMP is not in the allowed set
+    run ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress allow_proto tcp+udp >/dev/null 3>&- &
+    sleep 1
+    run ip netns exec "${NETNS}" tc qdisc show dev "${PEER}" clsact
+    [ "$(echo $output | xargs)" == "qdisc clsact ffff: parent ffff:fff1" ]
+    run ip netns exec "${NETNS}" ping -W1 -4 -c1 "${VETH_ADDR}"
+    [ $status -eq 1 ]
+    echo "# cannot ping ${VETH_ADDR} (icmp not in allowed set)" >&3
+}
+
+@test "allow_proto with decimal values allows ping" {
+    run ip netns exec "${NETNS}" ping -W1 -4 -c1 "${VETH_ADDR}"
+    [ $status -eq 0 ]
+    echo "# can ping ${VETH_ADDR} from the namespace" >&3
+    # 6=TCP, 17=UDP, 1=ICMP
+    run ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress allow_proto 6+17+1 >/dev/null 3>&- &
+    sleep 1
+    run ip netns exec "${NETNS}" tc qdisc show dev "${PEER}" clsact
+    [ "$(echo $output | xargs)" == "qdisc clsact ffff: parent ffff:fff1" ]
+    run ip netns exec "${NETNS}" ping -W1 -4 -c1 "${VETH_ADDR}"
+    [ $status -eq 0 ]
+    echo "# can still ping ${VETH_ADDR} (6+17+1 allowed)" >&3
+}
+
+@test "chain allow_ethertype+allow_proto blocks ICMP" {
+    run ip netns exec "${NETNS}" ping -W1 -4 -c1 "${VETH_ADDR}"
+    [ $status -eq 0 ]
+    echo "# can ping ${VETH_ADDR} from the namespace" >&3
+    # L2: allow IPv4+ARP, L3: allow only TCP+UDP — ICMP blocked at L3
+    run ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress --chain "allow_ethertype:ipv4+arp,allow_proto:tcp+udp" >/dev/null 3>&- &
+    sleep 1
+    run ip netns exec "${NETNS}" tc qdisc show dev "${PEER}" clsact
+    [ "$(echo $output | xargs)" == "qdisc clsact ffff: parent ffff:fff1" ]
+    run ip netns exec "${NETNS}" ping -W1 -4 -c1 "${VETH_ADDR}"
+    [ $status -eq 1 ]
+    echo "# cannot ping ${VETH_ADDR} (icmp blocked at L3 by allow_proto)" >&3
+}
+
 @test "chain allow_ipv4+allow_port allows matching traffic" {
     new_server
     run ip netns exec "${NETNS}" curl --max-time 1 --silent "${VETH_ADDR}:${SERVER_PORT}" >/dev/null

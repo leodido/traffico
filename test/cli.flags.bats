@@ -250,3 +250,69 @@ bats_require_minimum_version 1.7.0
     [ $status -eq 1 ]
     [ "${lines[0]}" == "traffico: duplicate EtherType value: 'qinq+0x88A8'" ]
 }
+
+@test "missing input for allow_proto" {
+    run traffico -i lo allow_proto
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: program 'allow_proto' requires an input argument" ]
+}
+
+@test "unknown protocol name" {
+    run traffico -i lo allow_proto xxx
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: invalid protocol number: 'xxx'" ]
+}
+
+@test "invalid protocol decimal" {
+    run traffico -i lo allow_proto abc
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: invalid protocol number: 'abc'" ]
+}
+
+@test "protocol number out of range" {
+    run traffico -i lo allow_proto 256
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: invalid protocol number: '256'" ]
+}
+
+@test "duplicate protocol values" {
+    run traffico -i lo allow_proto tcp+tcp
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: duplicate protocol value: 'tcp+tcp'" ]
+}
+
+@test "duplicate protocol values across representations" {
+    run traffico -i lo allow_proto tcp+6
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: duplicate protocol value: 'tcp+6'" ]
+}
+
+@test "trailing + in proto input" {
+    run traffico -i lo allow_proto "tcp+"
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: input must not end with '+': 'tcp+'" ]
+}
+
+@test "leading + in proto input" {
+    run traffico -i lo allow_proto "+tcp"
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: input must not start with '+': '+tcp'" ]
+}
+
+@test "consecutive ++ in proto input" {
+    run traffico -i lo allow_proto "tcp++udp"
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: input contains empty value between '+' delimiters: 'tcp++udp'" ]
+}
+
+@test "too many protocol values" {
+    run traffico -i lo allow_proto "1+2+3+4+5+6+7+8+9"
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: too many protocol values: '1+2+3+4+5+6+7+8+9'" ]
+}
+
+@test "sctp symbolic name resolves to 132" {
+    run traffico -i lo allow_proto "sctp+132"
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: duplicate protocol value: 'sctp+132'" ]
+}
