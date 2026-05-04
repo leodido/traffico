@@ -6,6 +6,9 @@
 char LICENSE[] SEC("license") = "Dual BSD/GPL";
 
 const volatile __u32 input = 0; // address to allow (host byte order)
+const volatile __u32 slot = 0;  // position in the chain (set by userspace)
+
+DEFINE_PROG_ARRAY();
 
 SEC("tc")
 int allow_ipv4(struct __sk_buff *skb)
@@ -64,5 +67,6 @@ int allow_ipv4(struct __sk_buff *skb)
         return TC_ACT_SHOT;
     }
 
+    tail_call_next(skb, slot);
     return TC_ACT_OK;
 }
