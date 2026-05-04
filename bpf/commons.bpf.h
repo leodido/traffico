@@ -15,6 +15,18 @@
 #define ETH_P_IP 0x0800
 #endif
 
+#ifndef ETH_P_IPV6
+#define ETH_P_IPV6 0x86DD
+#endif
+
+#ifndef ETH_P_ARP
+#define ETH_P_ARP 0x0806
+#endif
+
+/// Maximum number of values in a multi-value rodata input.
+/// Must match MAX_MULTI_VALUES in api.h.
+#define MAX_MULTI_VALUES 8
+
 #ifndef IP_MF
 #define IP_MF 0x2000
 #endif
