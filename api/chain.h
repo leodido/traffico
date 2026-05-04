@@ -316,6 +316,57 @@ static int load_chain_program(struct config *conf,
         log_out(conf, "done: loaded allow_ethertype at slot %d\n", slot);
         break;
     }
+    case program_allow_proto:
+    {
+        struct allow_proto_bpf *obj = allow_proto_bpf__open();
+        if (!obj)
+        {
+            log_err(conf, "fail: opening allow_proto skeleton\n");
+            return 1;
+        }
+
+        err = bpf_map__reuse_fd(obj->maps.prog_array, prog_array_fd);
+        if (err)
+        {
+            log_err(conf, "fail: reusing prog_array for allow_proto\n");
+            allow_proto_bpf__destroy(obj);
+            return 1;
+        }
+
+        if (entry->has_input)
+        {
+            err = set_chain_rodata(obj->maps.rodata,
+                                   &entry->input.protos, sizeof(entry->input.protos),
+                                   slot);
+            if (err)
+            {
+                log_err(conf, "fail: setting rodata for allow_proto\n");
+                allow_proto_bpf__destroy(obj);
+                return 1;
+            }
+        }
+
+        err = allow_proto_bpf__load(obj);
+        if (err)
+        {
+            libbpf_strerror(err, buf, sizeof(buf));
+            log_err(conf, "fail: loading allow_proto: %s\n", buf);
+            allow_proto_bpf__destroy(obj);
+            return 1;
+        }
+
+        int prog_fd = bpf_program__fd(obj->progs.allow_proto);
+        err = bpf_map_update_elem(prog_array_fd, &slot, &prog_fd, BPF_ANY);
+        if (err)
+        {
+            log_err(conf, "fail: inserting allow_proto into prog_array slot %d\n", slot);
+            allow_proto_bpf__destroy(obj);
+            return 1;
+        }
+
+        log_out(conf, "done: loaded allow_proto at slot %d\n", slot);
+        break;
+    }
     default:
         log_err(conf, "fail: program '%s' does not support chaining\n",
                 g_programs_name[entry->program]);
@@ -331,7 +382,8 @@ static inline bool program_supports_chaining(program_t program)
     return program == program_allow_dns ||
            program == program_allow_ethertype ||
            program == program_allow_ipv4 ||
-           program == program_allow_port;
+           program == program_allow_port ||
+           program == program_allow_proto;
 }
 
 /// Attach a chain of programs using the dispatcher + tail calls.
