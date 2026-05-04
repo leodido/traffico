@@ -35,11 +35,11 @@ struct chain_entry
         struct {
             __u16 values[MAX_MULTI_VALUES];
             __u8 count;
-        } ethertypes;      // allow_ethertype (future)
+        } ethertypes;      // allow_ethertype
         struct {
             __u8 values[MAX_MULTI_VALUES];
             __u8 count;
-        } protos;          // allow_proto (future)
+        } protos;          // allow_proto
     } input;
 };
 

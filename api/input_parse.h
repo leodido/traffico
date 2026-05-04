@@ -65,6 +65,17 @@ static int validate_delimited_input(const char *input_str, const char **err_msg)
     return 0;
 }
 
+// Returns true if the token contains any whitespace character.
+static inline bool token_has_whitespace(const char *token)
+{
+    for (const char *p = token; *p; p++)
+    {
+        if (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r')
+            return true;
+    }
+    return false;
+}
+
 // Parse a '+'-delimited list of EtherTypes into conf->input.ethertypes.
 // Each token is a symbolic name (ipv4, arp, ipv6) or a 0x-prefixed hex value.
 // Returns 0 on success, -1 on error (with err_msg set).
@@ -88,6 +99,11 @@ static int parse_ethertypes(struct config *conf, const char *input_str, const ch
 
     while (token)
     {
+        if (token_has_whitespace(token))
+        {
+            *err_msg = "value must not contain whitespace";
+            return -1;
+        }
         if (count >= MAX_MULTI_VALUES)
         {
             *err_msg = "too many EtherType values";
@@ -179,6 +195,11 @@ static int parse_protos(struct config *conf, const char *input_str, const char *
 
     while (token)
     {
+        if (token_has_whitespace(token))
+        {
+            *err_msg = "value must not contain whitespace";
+            return -1;
+        }
         if (count >= MAX_MULTI_VALUES)
         {
             *err_msg = "too many protocol values";

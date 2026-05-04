@@ -382,6 +382,21 @@ s.close()
     echo "# cannot ping ${VETH_ADDR} (icmp blocked at L3 by allow_proto)" >&3
 }
 
+@test "chain allow_ethertype+allow_proto allows TCP" {
+    new_server
+    run ip netns exec "${NETNS}" curl --max-time 1 --silent "${VETH_ADDR}:${SERVER_PORT}" >/dev/null
+    [ $status -eq 0 ]
+    echo "# can reach ${VETH_ADDR}:${SERVER_PORT} from the namespace" >&3
+    # L2: allow IPv4+ARP, L3: allow TCP+UDP — HTTP (TCP) should pass
+    run ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress --chain "allow_ethertype:ipv4+arp,allow_proto:tcp+udp" >/dev/null 3>&- &
+    sleep 1
+    run ip netns exec "${NETNS}" tc qdisc show dev "${PEER}" clsact
+    [ "$(echo $output | xargs)" == "qdisc clsact ffff: parent ffff:fff1" ]
+    run ip netns exec "${NETNS}" curl --max-time 1 --silent "${VETH_ADDR}:${SERVER_PORT}" >/dev/null
+    [ $status -eq 0 ]
+    echo "# can still reach ${VETH_ADDR}:${SERVER_PORT} (TCP allowed by chain)" >&3
+}
+
 @test "chain allow_ipv4+allow_port allows matching traffic" {
     new_server
     run ip netns exec "${NETNS}" curl --max-time 1 --silent "${VETH_ADDR}:${SERVER_PORT}" >/dev/null
