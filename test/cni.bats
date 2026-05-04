@@ -113,6 +113,22 @@ s.close()
     kill $DNS_PID 2>/dev/null || true
 }
 
+@test "allow_ethertype via CNI" {
+    run ip netns exec "${NETNS}" ping -W1 -4 -c1 "${VETH_ADDR}"
+    [ $status -eq 0 ]
+    echo "# can ping ${VETH_ADDR} from the namespace" >&3
+    echo "# installing allow_ethertype in the namespace" >&3
+    run ip netns exec "${NETNS}" bash -c "cat '$FIXTURE_ROOT/attach_allow_ethertype_in.json' | CNI_COMMAND=ADD traffico-cni"
+    [ $status -eq 0 ]
+    echo "# attach ok" >&3
+    run ip netns exec "${NETNS}" tc qdisc show dev peer0 clsact
+    [ "$(echo $output | xargs)" == "qdisc clsact ffff: parent ffff:fff1" ]
+    echo "# qdisc ok" >&3
+    run ip netns exec "${NETNS}" ping -W1 -4 -c1 "${VETH_ADDR}"
+    [ $status -eq 0 ]
+    echo "# can still ping ${VETH_ADDR} (ipv4+arp allowed)" >&3
+}
+
 @test "allow_port via CNI" {
     run curl --max-time 1 --silent "${VETH_ADDR}:${SERVER_PORT}" >/dev/null
     [ $status -eq 0 ]
