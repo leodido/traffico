@@ -7,6 +7,7 @@
 /// defines
 #define TOOL_NAME "traffico"
 #define NUM_PROGRAMS ${PROGRAMS_COUNT}
+#define MAX_MULTI_VALUES 8
 #define PROGRAMS_DESCRIPTION ${PROGRAMS_DESCRIPTION}
 
 /// globals
@@ -33,8 +34,16 @@ struct config
 
     bool has_input;
     union {
-        __u32 ip;
-        __u16 port;
+        __u32 ip;          // allow_ipv4, allow_dns, block_ipv4
+        __u16 port;        // allow_port, block_port
+        struct {
+            __u16 values[MAX_MULTI_VALUES];
+            __u8 count;
+        } ethertypes;      // allow_ethertype (future)
+        struct {
+            __u8 values[MAX_MULTI_VALUES];
+            __u8 count;
+        } protos;          // allow_proto (future)
     } input;
 };
 
