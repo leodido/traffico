@@ -120,7 +120,8 @@ BUILT-IN PROGRAMS
         allow_ethertype is an L2 gatekeeper that drops Ethernet frames
         whose EtherType is not in the allowed set. Multiple EtherTypes
         can be specified by joining them with +. Symbolic names (ipv4,
-        ipv6, arp) and hex values (0x0800) are both supported.
+        ipv6, arp, vlan, qinq) and hex values (0x0800) are both
+        supported.
         Example: allow_ethertype ipv4+arp
 
         In a chain, allow_ethertype must be the first program. L3+
@@ -128,9 +129,10 @@ BUILT-IN PROGRAMS
         outside their domain (e.g., non-IPv4 frames), which bypasses
         any downstream allow_ethertype filter.
 
-        VLAN TPIDs (0x8100, 0x88A8) are only supported in standalone
-        mode. In chains, they are rejected because downstream L3/L4
-        programs cannot yet parse VLAN-encapsulated payloads.
+        Symbolic names vlan (0x8100) and qinq (0x88A8) are available.
+        VLAN TPIDs are only supported in standalone mode. In chains,
+        they are rejected because downstream L3/L4 programs cannot
+        yet parse VLAN-encapsulated payloads.
 
     allow_ipv4
         allow_ipv4 allows IPv4 traffic to the input address, drops the
