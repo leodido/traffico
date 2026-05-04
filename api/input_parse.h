@@ -35,6 +35,7 @@ static const struct proto_name g_proto_names[] = {
     {"tcp", 6},
     {"udp", 17},
     {"icmp", 1},
+    {"sctp", 132},
     {NULL, 0},
 };
 
@@ -278,6 +279,8 @@ static int parse_input(struct config *conf, const char *input_str, const char **
     }
     case program_allow_ethertype:
         return parse_ethertypes(conf, input_str, err_msg);
+    case program_allow_proto:
+        return parse_protos(conf, input_str, err_msg);
     default:
         *err_msg = "program does not accept input";
         return -1;
@@ -287,7 +290,7 @@ static int parse_input(struct config *conf, const char *input_str, const char **
 // Returns true if the given program requires an input argument.
 static inline bool program_requires_input(program_t program)
 {
-    return program == program_allow_dns || program == program_allow_ethertype || program == program_allow_ipv4 || program == program_allow_port || program == program_block_ipv4 || program == program_block_port;
+    return program == program_allow_dns || program == program_allow_ethertype || program == program_allow_ipv4 || program == program_allow_port || program == program_allow_proto || program == program_block_ipv4 || program == program_block_port;
 }
 
 #endif // TRAFFICO_INPUT_PARSE_H
