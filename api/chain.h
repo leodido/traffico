@@ -255,11 +255,24 @@ static int load_chain_program(struct config *conf,
     return 0;
 }
 
+/// Returns true if the given program supports chaining.
+static inline bool program_supports_chaining(program_t program)
+{
+    return program == program_allow_ipv4 ||
+           program == program_allow_port ||
+           program == program_allow_dns;
+}
+
 /// Attach a chain of programs using the dispatcher + tail calls.
 ///
-/// 1. Load and attach the dispatcher to TC
-/// 2. For each entry: load the program, set rodata, insert into prog_array
-/// 3. Pin prog_array to bpffs for persistence
+/// 1. Validate all chain entries before touching TC
+/// 2. Load and attach the dispatcher to TC
+/// 3. For each entry: load the program, set rodata, insert into prog_array
+/// 4. Pin prog_array to bpffs for persistence
+///
+/// On failure, always cleans up resources created by this call,
+/// regardless of cleanup_on_exit. The --no-cleanup flag only preserves
+/// state after a successful attach.
 int attach_chain(struct config *conf,
                  struct chain_entry *entries, int chain_len,
                  after_attach_fn_t cb)
@@ -275,7 +288,18 @@ int attach_chain(struct config *conf,
         return 1;
     }
 
-    // 1. Load and attach the dispatcher
+    // 1. Validate all chain entries before attaching anything
+    for (int i = 0; i < chain_len; i++)
+    {
+        if (!program_supports_chaining(entries[i].program))
+        {
+            log_err(conf, "fail: program '%s' does not support chaining\n",
+                    g_programs_name[entries[i].program]);
+            return 1;
+        }
+    }
+
+    // 2. Load and attach the dispatcher
     struct dispatcher_bpf *dispatcher = dispatcher_bpf__open();
     if (!dispatcher)
     {
@@ -355,52 +379,68 @@ int attach_chain(struct config *conf,
         }
     }
 
-    // 4. Load each chain program
+    // 5. Load each chain program
     for (int i = 0; i < chain_len; i++)
     {
         err = load_chain_program(conf, &entries[i], prog_array_fd, (__u32)i);
         if (err)
         {
             log_err(conf, "fail: loading chain program at slot %d\n", i);
-            goto cleanup_pins;
+            // Always clean up on failure — a partial chain with an
+            // attached dispatcher is worse than no chain at all.
+            goto cleanup_failure;
         }
     }
 
     log_out(conf, "done: chain of %d programs attached\n", chain_len);
 
-    // 5. Callback (e.g., wait for signal in CLI mode)
+    // 6. Callback (e.g., wait for signal in CLI mode)
     err = cb(hook, opts);
 
-    // 6. Cleanup
+    // 7. Cleanup after callback returns (normal exit path)
     if (conf->cleanup_on_exit)
     {
-        goto cleanup_pins;
+        goto cleanup_success;
     }
 
     // If not cleaning up, just destroy the skeleton (FDs are pinned)
     dispatcher_bpf__destroy(dispatcher);
     return 0;
 
-cleanup_pins:
-    if (conf->cleanup_on_exit && pinned)
+cleanup_failure:
+    // On failure, always clean up regardless of --no-cleanup.
+    // A partially attached chain is a security risk.
+    if (pinned)
     {
         unlink(pin_path);
-        // Remove pin directory (ignore errors — may not be empty)
+        rmdir(pin_dir);
+    }
+    opts.prog_fd = opts.prog_id = 0;
+    opts.flags = 0;
+    bpf_tc_detach(&hook, &opts);
+    log_out(conf, "done: detached dispatcher (failure cleanup)\n");
+    hook.attach_point |= BPF_TC_INGRESS;
+    bpf_tc_hook_destroy(&hook);
+    log_out(conf, "done: destroyed qdisc (failure cleanup)\n");
+    dispatcher_bpf__destroy(dispatcher);
+    return err < 0 ? -err : err;
+
+cleanup_success:
+    if (pinned)
+    {
+        unlink(pin_path);
         rmdir(pin_dir);
     }
 
 cleanup_hook:
-    if (conf->cleanup_on_exit)
-    {
-        opts.prog_fd = opts.prog_id = 0;
-        opts.flags = 0;
-        bpf_tc_detach(&hook, &opts);
-        log_out(conf, "done: detached dispatcher\n");
+    opts.prog_fd = opts.prog_id = 0;
+    opts.flags = 0;
+    bpf_tc_detach(&hook, &opts);
+    log_out(conf, "done: detached dispatcher\n");
 
-        hook.attach_point |= BPF_TC_INGRESS;
-        bpf_tc_hook_destroy(&hook);
-        log_out(conf, "done: destroyed qdisc\n");
-    }
+    hook.attach_point |= BPF_TC_INGRESS;
+    bpf_tc_hook_destroy(&hook);
+    log_out(conf, "done: destroyed qdisc\n");
 
 destroy:
     dispatcher_bpf__destroy(dispatcher);
