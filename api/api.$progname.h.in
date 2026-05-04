@@ -16,9 +16,11 @@ int ${OPERATION}${PROGNAME}(struct config *conf, after_attach_fn_t cb)
     }
 
     // Set read-only data (between open and load).
-    // Assumes each BPF program has exactly one const volatile global
-    // at offset 0 in .rodata. If a program adds more globals, this
-    // memcpy must account for their offsets.
+    // Copies the input field struct at offset 0 in .rodata. This covers
+    // both single-value inputs (e.g., a __u32 IP) and multi-value inputs
+    // (e.g., ethertypes: __u16[8] + __u8 count). Additional globals like
+    // `slot` (used for chain support) are not set here — they default to
+    // zero from calloc, which is correct for standalone mode.
 #if ${PROGNAME_WITH_RODATA}
     if (conf->has_input)
     {

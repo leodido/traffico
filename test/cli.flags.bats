@@ -178,3 +178,63 @@ bats_require_minimum_version 1.7.0
     [ $status -eq 1 ]
     [ "${lines[0]}" == "traffico: --chain requires at least one program" ]
 }
+
+@test "missing input for allow_ethertype" {
+    run traffico -i lo allow_ethertype
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: program 'allow_ethertype' requires an input argument" ]
+}
+
+@test "unknown ethertype name" {
+    run traffico -i lo allow_ethertype xxx
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: unknown EtherType name: 'xxx'" ]
+}
+
+@test "invalid ethertype hex value" {
+    run traffico -i lo allow_ethertype 0xZZZZ
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: invalid EtherType hex value: '0xZZZZ'" ]
+}
+
+@test "duplicate ethertype values" {
+    run traffico -i lo allow_ethertype ipv4+ipv4
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: duplicate EtherType value: 'ipv4+ipv4'" ]
+}
+
+@test "duplicate ethertype values across representations" {
+    run traffico -i lo allow_ethertype ipv4+0x0800
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: duplicate EtherType value: 'ipv4+0x0800'" ]
+}
+
+@test "trailing + in ethertype input" {
+    run traffico -i lo allow_ethertype "ipv4+"
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: input must not end with '+': 'ipv4+'" ]
+}
+
+@test "leading + in ethertype input" {
+    run traffico -i lo allow_ethertype "+ipv4"
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: input must not start with '+': '+ipv4'" ]
+}
+
+@test "consecutive ++ in ethertype input" {
+    run traffico -i lo allow_ethertype "ipv4++arp"
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: input contains empty value between '+' delimiters: 'ipv4++arp'" ]
+}
+
+@test "too many ethertype values" {
+    run traffico -i lo allow_ethertype "ipv4+ipv6+arp+0x8100+0x88A8+0x8847+0x8848+0x88CC+0x0842"
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: too many EtherType values: 'ipv4+ipv6+arp+0x8100+0x88A8+0x8847+0x8848+0x88CC+0x0842'" ]
+}
+
+@test "zero ethertype hex value" {
+    run traffico -i lo allow_ethertype 0x0000
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: invalid EtherType hex value: '0x0000'" ]
+}

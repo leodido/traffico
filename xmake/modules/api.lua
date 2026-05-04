@@ -10,6 +10,7 @@ import("core.project.project")
 -- PROGNAME_IS_MULTI_VALUE to distinguish array inputs from scalars.
 local input_fields = {
     allow_dns = "ip",
+    allow_ethertype = { field = "ethertypes", multi = true },
     allow_ipv4 = "ip",
     allow_port = "port",
     block_ipv4 = "ip",
