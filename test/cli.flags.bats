@@ -260,19 +260,19 @@ bats_require_minimum_version 1.7.0
 @test "unknown protocol name" {
     run traffico -i lo allow_proto xxx
     [ $status -eq 1 ]
-    [ "${lines[0]}" == "traffico: invalid protocol number: 'xxx'" ]
+    [ "${lines[0]}" == "traffico: unknown protocol name (use a number 0-255): 'xxx'" ]
 }
 
 @test "invalid protocol decimal" {
     run traffico -i lo allow_proto abc
     [ $status -eq 1 ]
-    [ "${lines[0]}" == "traffico: invalid protocol number: 'abc'" ]
+    [ "${lines[0]}" == "traffico: unknown protocol name (use a number 0-255): 'abc'" ]
 }
 
 @test "protocol number out of range" {
     run traffico -i lo allow_proto 256
     [ $status -eq 1 ]
-    [ "${lines[0]}" == "traffico: invalid protocol number: '256'" ]
+    [ "${lines[0]}" == "traffico: protocol number out of range (0-255): '256'" ]
 }
 
 @test "duplicate protocol values" {
@@ -315,4 +315,13 @@ bats_require_minimum_version 1.7.0
     run traffico -i lo allow_proto "sctp+132"
     [ $status -eq 1 ]
     [ "${lines[0]}" == "traffico: duplicate protocol value: 'sctp+132'" ]
+}
+
+@test "protocol 0 is accepted" {
+    run traffico -i lo allow_proto 0
+    # Exit 1 from BPF load (no root), not from parsing.
+    # If parsing rejected 0, the error message would mention "invalid" or "out of range".
+    [[ "${lines[0]}" != *"invalid"* ]]
+    [[ "${lines[0]}" != *"out of range"* ]]
+    [[ "${lines[0]}" != *"unknown"* ]]
 }

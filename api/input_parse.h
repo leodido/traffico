@@ -204,9 +204,14 @@ static int parse_protos(struct config *conf, const char *input_str, const char *
         {
             char *endptr;
             unsigned long v = strtoul(token, &endptr, 10);
-            if (*endptr != '\0' || v > 255)
+            if (*endptr != '\0')
             {
-                *err_msg = "invalid protocol number";
+                *err_msg = "unknown protocol name (use a number 0-255)";
+                return -1;
+            }
+            if (v > 255)
+            {
+                *err_msg = "protocol number out of range (0-255)";
                 return -1;
             }
             // Protocol 0 (HOPOPT) is technically valid but unlikely intended;

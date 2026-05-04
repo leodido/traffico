@@ -16,6 +16,7 @@
 #include "allow_ethertype.skel.h"
 #include "allow_ipv4.skel.h"
 #include "allow_port.skel.h"
+#include "allow_proto.skel.h"
 
 #define MAX_CHAIN_LEN 8
 #define BPFFS_BASE "/sys/fs/bpf/traffico"
