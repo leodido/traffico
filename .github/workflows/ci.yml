@@ -51,7 +51,7 @@ jobs:
           pacman -S --noconfirm \
             clang llvm gcc linux-headers bpf \
             make cmake xmake sudo diffutils \
-            curl iproute2 iputils
+            curl iproute2 iputils python
 
       - name: Configure
         run: xmake f -y --generate-vmlinux=y
