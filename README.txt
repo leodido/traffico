@@ -133,6 +133,18 @@ BUILT-IN PROGRAMS
         vlan in the allowed set to avoid dropping tagged frames.
         For QinQ (802.1ad) double-tagged networks, also include qinq.
 
+    allow_proto
+        allow_proto is an L3 gatekeeper that drops IPv4 packets whose IP
+        protocol is not in the allowed set. Non-IPv4 traffic passes
+        through (L2 filtering is allow_ethertype's job). Multiple
+        protocols can be specified by joining them with +. Symbolic
+        names (tcp, udp, icmp, sctp) and decimal numbers (6, 17) are
+        both supported.
+        Example: allow_proto tcp+udp
+
+        In a chain, allow_proto should be placed after allow_ethertype
+        and before allow_port (L2 -> L3 -> L4 ordering).
+
     allow_ipv4
         allow_ipv4 is a program that drops all packets except those with
         destination equal to the input IPv4 address. Localhost (127.0.0.0/8)

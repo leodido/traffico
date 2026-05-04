@@ -13,6 +13,7 @@ local input_fields = {
     allow_ethertype = { field = "ethertypes", multi = true },
     allow_ipv4 = "ip",
     allow_port = "port",
+    allow_proto = { field = "protos", multi = true },
     block_ipv4 = "ip",
     block_port = "port",
 }

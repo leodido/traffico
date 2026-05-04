@@ -123,6 +123,7 @@ Here's an example CNI config file featuring `traffico-cni`.
 | `allow_ethertype` | L2 gatekeeper: drops frames whose EtherType is not in the allowed set (e.g., `ipv4+arp`). Must be first in a chain (see notes below). |
 | `allow_ipv4` | Drops all packets except those destined for the input IPv4 address (localhost exempt) |
 | `allow_port` | Drops all TCP/UDP packets except those destined for the input port (non-TCP/UDP unaffected) |
+| `allow_proto` | L3 gatekeeper: drops IPv4 packets whose IP protocol is not in the allowed set (e.g., `tcp+udp`). Non-IPv4 passes through. |
 | `block_private_ipv4` | Blocks private IPv4 addresses subnets allowing only SSH access on port 22 |
 | `block_ipv4` | Drops packets with destination equal to the input IPv4 address |
 | `block_port` | Drops packets with the destination port equal to the input port number |
@@ -133,6 +134,12 @@ Here's an example CNI config file featuring `traffico-cni`.
 **Chain ordering:** In a chain, `allow_ethertype` must be the first program. L3+ programs (`allow_ipv4`, `allow_port`, etc.) pass through traffic outside their domain (e.g., non-IPv4 frames return `TC_ACT_OK` directly), which bypasses any downstream `allow_ethertype` filter.
 
 **VLAN-tagged networks:** On 802.1Q networks, the outer EtherType is the VLAN tag protocol identifier (`0x8100`), not the payload type. Include `vlan` (or `qinq` for 802.1ad double-tagged networks) in the allowed set to avoid dropping tagged frames. Example: `allow_ethertype ipv4+arp+vlan`.
+
+### Notes on `allow_proto`
+
+**Chain ordering:** In a chain, `allow_proto` should be placed after `allow_ethertype` and before `allow_port`/`allow_dns`. This gives L2 → L3 → L4 ordering with cheapest checks first. Example: `--chain "allow_ethertype:ipv4+arp,allow_proto:tcp+udp,allow_port:8080"`.
+
+**Non-IPv4 passthrough:** Non-IPv4 traffic (ARP, IPv6) passes through unfiltered. L2 filtering is `allow_ethertype`'s responsibility.
 
 ## Build
 

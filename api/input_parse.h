@@ -35,6 +35,7 @@ static const struct proto_name g_proto_names[] = {
     {"tcp", 6},
     {"udp", 17},
     {"icmp", 1},
+    {"sctp", 132},
     {NULL, 0},
 };
 
@@ -64,6 +65,17 @@ static int validate_delimited_input(const char *input_str, const char **err_msg)
     return 0;
 }
 
+// Returns true if the token contains any whitespace character.
+static inline bool token_has_whitespace(const char *token)
+{
+    for (const char *p = token; *p; p++)
+    {
+        if (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r')
+            return true;
+    }
+    return false;
+}
+
 // Parse a '+'-delimited list of EtherTypes into conf->input.ethertypes.
 // Each token is a symbolic name (ipv4, arp, ipv6) or a 0x-prefixed hex value.
 // Returns 0 on success, -1 on error (with err_msg set).
@@ -87,6 +99,11 @@ static int parse_ethertypes(struct config *conf, const char *input_str, const ch
 
     while (token)
     {
+        if (token_has_whitespace(token))
+        {
+            *err_msg = "value must not contain whitespace";
+            return -1;
+        }
         if (count >= MAX_MULTI_VALUES)
         {
             *err_msg = "too many EtherType values";
@@ -178,6 +195,11 @@ static int parse_protos(struct config *conf, const char *input_str, const char *
 
     while (token)
     {
+        if (token_has_whitespace(token))
+        {
+            *err_msg = "value must not contain whitespace";
+            return -1;
+        }
         if (count >= MAX_MULTI_VALUES)
         {
             *err_msg = "too many protocol values";
@@ -203,9 +225,14 @@ static int parse_protos(struct config *conf, const char *input_str, const char *
         {
             char *endptr;
             unsigned long v = strtoul(token, &endptr, 10);
-            if (*endptr != '\0' || v > 255)
+            if (*endptr != '\0')
             {
-                *err_msg = "invalid protocol number";
+                *err_msg = "unknown protocol name (use a number 0-255)";
+                return -1;
+            }
+            if (v > 255)
+            {
+                *err_msg = "protocol number out of range (0-255)";
                 return -1;
             }
             // Protocol 0 (HOPOPT) is technically valid but unlikely intended;
@@ -278,6 +305,8 @@ static int parse_input(struct config *conf, const char *input_str, const char **
     }
     case program_allow_ethertype:
         return parse_ethertypes(conf, input_str, err_msg);
+    case program_allow_proto:
+        return parse_protos(conf, input_str, err_msg);
     default:
         *err_msg = "program does not accept input";
         return -1;
@@ -287,7 +316,7 @@ static int parse_input(struct config *conf, const char *input_str, const char **
 // Returns true if the given program requires an input argument.
 static inline bool program_requires_input(program_t program)
 {
-    return program == program_allow_dns || program == program_allow_ethertype || program == program_allow_ipv4 || program == program_allow_port || program == program_block_ipv4 || program == program_block_port;
+    return program == program_allow_dns || program == program_allow_ethertype || program == program_allow_ipv4 || program == program_allow_port || program == program_allow_proto || program == program_block_ipv4 || program == program_block_port;
 }
 
 #endif // TRAFFICO_INPUT_PARSE_H
