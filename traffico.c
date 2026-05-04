@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <signal.h>
 #include <stdio.h>
 #include <string.h>
@@ -11,6 +12,7 @@
 
 #include "api.h"
 #include "api/input_parse.h"
+#include "api/chain.h"
 
 const char *argp_program_version = TOOL_NAME " 0.0";
 const char *argp_program_bug_address = "https://github.com/leodido/traffico/issues";
@@ -34,6 +36,9 @@ const char OPT_ATTACH_LONG[] = "at";
 const char OPT_ATTACH_ARG[] = "INGRESS|EGRESS";
 #define OPT_NO_CLEANUP_KEY 0x81
 const char OPT_NO_CLEANUP_LONG[] = "no-cleanup";
+#define OPT_CHAIN_KEY 0x82
+const char OPT_CHAIN_LONG[] = "chain";
+const char OPT_CHAIN_ARG[] = "PROG:INPUT,...";
 
 const struct argp_option argp_opts[] = {
 
@@ -42,12 +47,16 @@ const struct argp_option argp_opts[] = {
     {OPT_IFNAME_LONG, OPT_IFNAME_KEY, OPT_IFNAME_ARG, 0, "Interface to which to attach the filter\n(defaults to the default gateway interface)", 1},
     {OPT_ATTACH_LONG, OPT_ATTACH_KEY, OPT_ATTACH_ARG, 0, "Where to attach the filter (defaults to egress)", 1},
     {OPT_NO_CLEANUP_LONG, OPT_NO_CLEANUP_KEY, NULL, 0, "Do not detach the TC hook and filter at the exit", 1},
+    {OPT_CHAIN_LONG, OPT_CHAIN_KEY, OPT_CHAIN_ARG, 0, "Attach a chain of programs (e.g., allow_ipv4:10.0.0.1,allow_port:8080)", 1},
     {"", 0, 0, OPTION_DOC, 0, 0},
     {0} // .
 
 };
 
 static struct config g_config;
+static struct chain_entry g_chain[MAX_CHAIN_LEN];
+static int g_chain_len = 0;
+static char *g_chain_arg = NULL;
 
 #define log_erro(fmt, ...) \
     log_err(&g_config, fmt, ##__VA_ARGS__);
@@ -141,6 +150,9 @@ static error_t parse_cli(int key, char *arg, struct argp_state *state)
     case OPT_NO_CLEANUP_KEY:
         g_config.cleanup_on_exit = false;
         break;
+    case OPT_CHAIN_KEY:
+        g_chain_arg = arg;
+        break;
 
     // Arguments
     case ARGP_KEY_ARG:
@@ -170,13 +182,21 @@ static error_t parse_cli(int key, char *arg, struct argp_state *state)
         break;
 
     case ARGP_KEY_END:
-        if (state->arg_num == 0)
+        // In chain mode, positional args are not required
+        if (!g_chain_arg)
         {
-            argp_error(state, "program name is mandatory");
+            if (state->arg_num == 0)
+            {
+                argp_error(state, "program name is mandatory");
+            }
+            if (g_config.program == program_0)
+            {
+                argp_error(state, "argument '%s' is not a " TOOL_NAME " program", g_config.program_arg);
+            }
         }
-        if (g_config.program == program_0)
+        else if (state->arg_num > 0)
         {
-            argp_error(state, "argument '%s' is not a " TOOL_NAME " program", g_config.program_arg);
+            argp_error(state, "--chain and positional PROGRAM arguments are mutually exclusive");
         }
         break;
 
@@ -193,18 +213,86 @@ static error_t parse_cli(int key, char *arg, struct argp_state *state)
             assert(g_config.ifindex != 0);
         }
 
-        // Parse input value based on the selected program
-        if (g_config.input_arg)
+        if (g_chain_arg)
         {
-            const char *err_msg = NULL;
-            if (parse_input(&g_config, g_config.input_arg, &err_msg) != 0)
+            // Parse chain: comma-separated "name:input" or "name" entries.
+            // Tokenize g_chain_arg directly — argp guarantees the pointer
+            // remains valid through ARGP_KEY_FINI.
+            char *saveptr = NULL;
+            char *token = strtok_r(g_chain_arg, ",", &saveptr);
+            while (token)
             {
-                argp_error(state, "%s: '%s'", err_msg, g_config.input_arg);
+                if (g_chain_len >= MAX_CHAIN_LEN)
+                {
+                    argp_error(state, "chain exceeds maximum of %d programs", MAX_CHAIN_LEN);
+                }
+
+                char *colon = strchr(token, ':');
+                char *prog_name = token;
+                char *input_str = NULL;
+                if (colon)
+                {
+                    *colon = '\0';
+                    input_str = colon + 1;
+                }
+
+                // Look up program name
+                int found = 0;
+                for (int pi = 1; pi < NUM_PROGRAMS; pi++)
+                {
+                    if (strcasecmp(prog_name, g_programs_name[pi]) == 0)
+                    {
+                        g_chain[g_chain_len].program = (program_t)pi;
+                        found = 1;
+                        break;
+                    }
+                }
+                if (!found)
+                {
+                    argp_error(state, "unknown program in chain: '%s'", prog_name);
+                }
+
+                // Parse input for this program
+                if (input_str)
+                {
+                    struct config tmp = {0};
+                    tmp.program = g_chain[g_chain_len].program;
+                    const char *err_msg = NULL;
+                    if (parse_input(&tmp, input_str, &err_msg) != 0)
+                    {
+                        argp_error(state, "%s: '%s'", err_msg, input_str);
+                    }
+                    g_chain[g_chain_len].has_input = tmp.has_input;
+                    memcpy(&g_chain[g_chain_len].input, &tmp.input, sizeof(tmp.input));
+                }
+                else if (program_requires_input(g_chain[g_chain_len].program))
+                {
+                    argp_error(state, "program '%s' in chain requires an input value (use name:value)", prog_name);
+                }
+
+                g_chain_len++;
+                token = strtok_r(NULL, ",", &saveptr);
+            }
+            if (g_chain_len == 0)
+            {
+                argp_error(state, "--chain requires at least one program");
             }
         }
-        else if (program_requires_input(g_config.program))
+        else
         {
-            argp_error(state, "program '%s' requires an input argument", g_programs_name[g_config.program]);
+            // Single program mode: parse input value
+            if (g_config.input_arg)
+            {
+                const char *err_msg = NULL;
+                if (parse_input(&g_config, g_config.input_arg, &err_msg) != 0)
+                {
+                    argp_error(state, "%s: '%s'", err_msg, g_config.input_arg);
+                }
+            }
+            else if (program_requires_input(g_config.program))
+            {
+                argp_error(state, "program '%s' requires an input argument", g_programs_name[g_config.program]);
+            }
         }
         break;
 
@@ -277,6 +365,12 @@ int main(int argc, char **argv)
     libbpf_set_print(libbpf_print_fn);
 
     // Execute
+    if (g_chain_len > 0)
+    {
+        log_info("chain: %d programs\n", g_chain_len);
+        return attach_chain(&g_config, g_chain, g_chain_len, &await);
+    }
+
     log_info("prog: %s\n", g_programs_name[g_config.program]);
     return attach(&g_config, &await);
 }
