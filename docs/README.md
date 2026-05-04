@@ -119,6 +119,7 @@ Here's an example CNI config file featuring `traffico-cni`.
 
 | Program | Description |
 |---|---|
+| `allow_ipv4` | Drops all packets except those destined for the input IPv4 address (localhost exempt) |
 | `block_private_ipv4` | Blocks private IPv4 addresses subnets allowing only SSH access on port 22 |
 | `block_ipv4` | Drops packets with destination equal to the input IPv4 address |
 | `block_port` | Drops packets with the destination port equal to the input port number |
