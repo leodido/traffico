@@ -122,6 +122,15 @@ BUILT-IN PROGRAMS
         ipv6, arp) and hex values (0x0800) are both supported.
         Example: allow_ethertype ipv4+arp
 
+        In a chain, allow_ethertype must be the first program. L3+
+        programs (allow_ipv4, allow_port, etc.) pass through traffic
+        outside their domain (e.g., non-IPv4 frames), which bypasses
+        any downstream allow_ethertype filter.
+
+        On VLAN-tagged networks (802.1Q), the outer EtherType is the
+        VLAN tag protocol (0x8100), not the payload type. Include
+        0x8100 in the allowed set to avoid dropping tagged frames.
+
     allow_ipv4
         allow_ipv4 is a program that drops all packets except those with
         destination equal to the input IPv4 address. Localhost (127.0.0.0/8)

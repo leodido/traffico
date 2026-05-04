@@ -77,9 +77,9 @@ struct trace_event_raw_bpf_trace_printk___x
     })
 #else
 #define bpf_printk(fmt, ...) \
+    do                       \
     {                        \
-    }                        \
-    while (0)
+    } while (0)
 #endif
 
 /// Tail call support for program chaining.

@@ -120,13 +120,19 @@ Here's an example CNI config file featuring `traffico-cni`.
 | Program | Description |
 |---|---|
 | `allow_dns` | Drops DNS (port 53) packets not destined for the input resolver IP (non-DNS unaffected) |
-| `allow_ethertype` | L2 gatekeeper: drops frames whose EtherType is not in the allowed set (e.g., `ipv4+arp`) |
+| `allow_ethertype` | L2 gatekeeper: drops frames whose EtherType is not in the allowed set (e.g., `ipv4+arp`). Must be first in a chain (see notes below). |
 | `allow_ipv4` | Drops all packets except those destined for the input IPv4 address (localhost exempt) |
 | `allow_port` | Drops all TCP/UDP packets except those destined for the input port (non-TCP/UDP unaffected) |
 | `block_private_ipv4` | Blocks private IPv4 addresses subnets allowing only SSH access on port 22 |
 | `block_ipv4` | Drops packets with destination equal to the input IPv4 address |
 | `block_port` | Drops packets with the destination port equal to the input port number |
 | `nop` | A simple program that does nothing |
+
+### Notes on `allow_ethertype`
+
+**Chain ordering:** In a chain, `allow_ethertype` must be the first program. L3+ programs (`allow_ipv4`, `allow_port`, etc.) pass through traffic outside their domain (e.g., non-IPv4 frames return `TC_ACT_OK` directly), which bypasses any downstream `allow_ethertype` filter.
+
+**VLAN-tagged networks:** On 802.1Q networks, the outer EtherType is the VLAN tag protocol identifier (`0x8100`), not the payload type. Include `0x8100` (or `0x88A8` for QinQ) in the allowed set to avoid dropping tagged frames.
 
 ## Build
 

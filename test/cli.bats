@@ -272,6 +272,21 @@ s.close()
     echo "# cannot ping ${VETH_ADDR} (ipv4 not in allowed set)" >&3
 }
 
+@test "allow_ethertype ipv4 without arp blocks ping" {
+    run ip netns exec "${NETNS}" ping -W1 -4 -c1 "${VETH_ADDR}"
+    [ $status -eq 0 ]
+    echo "# can ping ${VETH_ADDR} from the namespace" >&3
+    # Allow only IPv4 without ARP — ping needs ARP to resolve the MAC
+    # address, so blocking ARP at L2 prevents the ping from completing
+    run ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress allow_ethertype ipv4 >/dev/null 3>&- &
+    sleep 1
+    run ip netns exec "${NETNS}" tc qdisc show dev "${PEER}" clsact
+    [ "$(echo $output | xargs)" == "qdisc clsact ffff: parent ffff:fff1" ]
+    run ip netns exec "${NETNS}" ping -W1 -4 -c1 "${VETH_ADDR}"
+    [ $status -eq 1 ]
+    echo "# cannot ping ${VETH_ADDR} (ARP blocked, cannot resolve MAC)" >&3
+}
+
 @test "chain allow_ethertype+allow_ipv4 allows matching traffic" {
     run ip netns exec "${NETNS}" ping -W1 -4 -c1 "${VETH_ADDR}"
     [ $status -eq 0 ]

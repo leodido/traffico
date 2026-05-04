@@ -203,6 +203,12 @@ bats_require_minimum_version 1.7.0
     [ "${lines[0]}" == "traffico: duplicate EtherType value: 'ipv4+ipv4'" ]
 }
 
+@test "duplicate ethertype values across representations" {
+    run traffico -i lo allow_ethertype ipv4+0x0800
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: duplicate EtherType value: 'ipv4+0x0800'" ]
+}
+
 @test "trailing + in ethertype input" {
     run traffico -i lo allow_ethertype "ipv4+"
     [ $status -eq 1 ]
