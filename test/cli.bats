@@ -288,6 +288,29 @@ s.close()
     echo "# cannot reach ${VETH_ADDR}:${SERVER_PORT} (chain blocks wrong port)" >&3
 }
 
+@test "chain allow_port+allow_ipv4 continues through non-matching traffic" {
+    run ip netns exec "${NETNS}" ping -W1 -4 -c1 "${VETH_ADDR}"
+    [ $status -eq 0 ]
+    # allow_port returns TC_ACT_OK for ICMP; allow_ipv4 must still be reached in chain mode
+    run ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress --chain "allow_port:9999,allow_ipv4:${PEER_ADDR}" >/dev/null 3>&- &
+    sleep 1
+    run ip netns exec "${NETNS}" tc qdisc show dev "${PEER}" clsact
+    [ "$(echo $output | xargs)" == "qdisc clsact ffff: parent ffff:fff1" ]
+    run ip netns exec "${NETNS}" ping -W1 -4 -c1 "${VETH_ADDR}"
+    [ $status -eq 1 ]
+}
+
+@test "chain attach failure does not leave dispatcher attached with --no-cleanup" {
+    # block_ipv4 is unsupported in chain mode, so attach should fail and clean up qdisc state
+    run ip netns exec "${NETNS}" tc qdisc show dev "${PEER}" clsact
+    [ "$(echo "$output" | xargs)" == "" ]
+    run ip netns exec "${NETNS}" traffico --verbose --no-cleanup -i "${PEER}" --at egress --chain "allow_ipv4:${PEER_ADDR},block_ipv4:${VETH_ADDR}" >/dev/null 3>&-
+    [ $status -eq 1 ]
+    [[ "${output}" == *"does not support chaining"* ]]
+    run ip netns exec "${NETNS}" tc qdisc show dev "${PEER}" clsact
+    [ "$(echo "$output" | xargs)" == "" ]
+}
+
 @test "block_private_ipv4 blocks ICMP packets" {
     run ip netns exec "${NETNS}" ping -W1 -4 -c1 10.22.1.2
     [ $status -eq 0 ]

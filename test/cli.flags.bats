@@ -178,3 +178,21 @@ bats_require_minimum_version 1.7.0
     [ $status -eq 1 ]
     [ "${lines[0]}" == "traffico: --chain requires at least one program" ]
 }
+
+@test "--chain rejects leading separator" {
+    run timeout 2 traffico -i lo --chain ",allow_ipv4:127.0.0.1"
+    [ $status -eq 1 ]
+    [[ "${output}" == *"empty chain entry"* ]]
+}
+
+@test "--chain rejects trailing separator" {
+    run timeout 2 traffico -i lo --chain "allow_ipv4:127.0.0.1,"
+    [ $status -eq 1 ]
+    [[ "${output}" == *"empty chain entry"* ]]
+}
+
+@test "--chain rejects consecutive separators" {
+    run timeout 2 traffico -i lo --chain "allow_ipv4:127.0.0.1,,allow_port:80"
+    [ $status -eq 1 ]
+    [[ "${output}" == *"empty chain entry"* ]]
+}

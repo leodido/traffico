@@ -216,12 +216,32 @@ static error_t parse_cli(int key, char *arg, struct argp_state *state)
         if (g_chain_arg)
         {
             // Parse chain: comma-separated "name:input" or "name" entries.
-            // Tokenize g_chain_arg directly — argp guarantees the pointer
-            // remains valid through ARGP_KEY_FINI.
-            char *saveptr = NULL;
-            char *token = strtok_r(g_chain_arg, ",", &saveptr);
-            while (token)
+            // Walk g_chain_arg directly so empty entries are not skipped.
+            if (g_chain_arg[0] == '\0')
             {
+                argp_error(state, "--chain requires at least one program");
+            }
+
+            char *cursor = g_chain_arg;
+            while (cursor)
+            {
+                char *token = cursor;
+                char *comma = strchr(token, ',');
+                if (comma)
+                {
+                    *comma = '\0';
+                    cursor = comma + 1;
+                }
+                else
+                {
+                    cursor = NULL;
+                }
+
+                if (token[0] == '\0')
+                {
+                    argp_error(state, "empty chain entry");
+                }
+
                 if (g_chain_len >= MAX_CHAIN_LEN)
                 {
                     argp_error(state, "chain exceeds maximum of %d programs", MAX_CHAIN_LEN);
@@ -271,7 +291,6 @@ static error_t parse_cli(int key, char *arg, struct argp_state *state)
                 }
 
                 g_chain_len++;
-                token = strtok_r(NULL, ",", &saveptr);
             }
             if (g_chain_len == 0)
             {
