@@ -517,7 +517,6 @@ sys.exit(0)
 }
 
 @test "chain allow_port+allow_ipv4 continues through non-matching traffic" {
-    skip "requires allow_port tail-call fix (PR #57)"
     run ip netns exec "${NETNS}" ping -W1 -4 -c1 "${VETH_ADDR}"
     [ $status -eq 0 ]
     # allow_port returns TC_ACT_OK for ICMP; allow_ipv4 must still be reached in chain mode
