@@ -30,6 +30,7 @@ int allow_port(struct __sk_buff *skb)
     if (eth->h_proto != bpf_htons(ETH_P_IP))
     {
         bpf_printk("allow_port: [eth] protocol is %d: continue", eth->h_proto);
+        tail_call_next(skb, slot);
         return TC_ACT_OK;
     }
 
@@ -65,6 +66,7 @@ int allow_port(struct __sk_buff *skb)
     if (ip_header->protocol != IPPROTO_TCP && ip_header->protocol != IPPROTO_UDP)
     {
         bpf_printk("allow_port: [iph] protocol %d is not TCP/UDP: allow", ip_header->protocol);
+        tail_call_next(skb, slot);
         return TC_ACT_OK;
     }
 

@@ -28,6 +28,7 @@ int allow_ipv4(struct __sk_buff *skb)
     if (eth->h_proto != bpf_htons(ETH_P_IP))
     {
         bpf_printk("allow_ipv4: [eth] protocol is %d: continue", eth->h_proto);
+        tail_call_next(skb, slot);
         return TC_ACT_OK;
     }
 
@@ -58,6 +59,7 @@ int allow_ipv4(struct __sk_buff *skb)
     if ((dest & 0xFF000000) == 0x7F000000)
     {
         bpf_printk("allow_ipv4: [iph] destination is localhost: allow");
+        tail_call_next(skb, slot);
         return TC_ACT_OK;
     }
 
