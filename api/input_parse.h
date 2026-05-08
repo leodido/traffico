@@ -112,7 +112,7 @@ static int parse_ethertypes(struct config *conf, const char *input_str, const ch
             {
                 char *endptr;
                 unsigned long v = strtoul(token, &endptr, 16);
-                if (*endptr != '\0' || v == 0 || v > 0xFFFF)
+                if (*endptr != '\0' || v < 0x0600 || v > 0xFFFF)
                 {
                     *err_msg = "invalid EtherType hex value";
                     return -1;
@@ -199,6 +199,11 @@ static int parse_protos(struct config *conf, const char *input_str, const char *
         // Try decimal number
         if (!found)
         {
+            if (token[0] < '0' || token[0] > '9')
+            {
+                *err_msg = "unknown protocol name (use a number 0-255)";
+                return -1;
+            }
             char *endptr;
             unsigned long v = strtoul(token, &endptr, 10);
             if (*endptr != '\0' || v > 255)
