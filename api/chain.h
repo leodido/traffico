@@ -19,6 +19,8 @@
 
 #define MAX_CHAIN_LEN 8
 #define BPFFS_BASE "/sys/fs/bpf/traffico"
+#define TRAFFICO_ETH_P_8021Q 0x8100
+#define TRAFFICO_ETH_P_8021AD 0x88A8
 
 /// Maximum number of values in a multi-value input (ethertypes, protos).
 #define MAX_MULTI_VALUES 8
@@ -41,6 +43,20 @@ struct chain_entry
         } protos;          // allow_proto (future)
     } input;
 };
+
+static inline bool chain_entry_has_vlan_tpid(const struct chain_entry *entry)
+{
+    if (entry->program != program_allow_ethertype || !entry->has_input)
+        return false;
+
+    for (__u8 i = 0; i < entry->input.ethertypes.count; i++)
+    {
+        __u16 value = entry->input.ethertypes.values[i];
+        if (value == TRAFFICO_ETH_P_8021Q || value == TRAFFICO_ETH_P_8021AD)
+            return true;
+    }
+    return false;
+}
 
 /// Ensure a directory exists, creating parents as needed.
 static int ensure_dir(const char *dir)
@@ -367,6 +383,19 @@ int attach_chain(struct config *conf,
             log_err(conf, "fail: program '%s' does not support chaining\n",
                     g_programs_name[entries[i].program]);
             return 1;
+        }
+        if (entries[i].program == program_allow_ethertype)
+        {
+            if (i != 0)
+            {
+                log_err(conf, "fail: program 'allow_ethertype' must be first in a chain\n");
+                return 1;
+            }
+            if (chain_len > 1 && chain_entry_has_vlan_tpid(&entries[i]))
+            {
+                log_err(conf, "fail: VLAN EtherTypes in allow_ethertype chains require VLAN-aware L3/L4 parsing\n");
+                return 1;
+            }
         }
     }
 

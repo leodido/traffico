@@ -268,7 +268,7 @@ sys.exit(0)
     run ip netns exec "${NETNS}" curl --max-time 1 --silent "${VETH_ADDR}:${SERVER_PORT}" >/dev/null
     [ $status -eq 0 ]
     echo "# can reach ${VETH_ADDR}:${SERVER_PORT} from the namespace" >&3
-    # Allow DNS only to PEER_ADDR — but non-DNS traffic should still pass
+    # Allow DNS only to PEER_ADDR - but non-DNS traffic should still pass
     run ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress allow_dns "${PEER_ADDR}" >/dev/null 3>&- &
     sleep 1
     run ip netns exec "${NETNS}" tc qdisc show dev "${PEER}" clsact
@@ -336,7 +336,7 @@ sys.exit(0)
     run ip netns exec "${NETNS}" ping -W1 -4 -c1 "${VETH_ADDR}"
     [ $status -eq 0 ]
     echo "# can ping ${VETH_ADDR} from the namespace" >&3
-    # Only allow IPv6 — IPv4 and ARP are not in the allowed set
+    # Only allow IPv6 - IPv4 and ARP are not in the allowed set
     run ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress allow_ethertype ipv6 >/dev/null 3>&- &
     sleep 1
     run ip netns exec "${NETNS}" tc qdisc show dev "${PEER}" clsact
@@ -350,12 +350,14 @@ sys.exit(0)
     run ip netns exec "${NETNS}" ping -W1 -4 -c1 "${VETH_ADDR}"
     [ $status -eq 0 ]
     echo "# can ping ${VETH_ADDR} from the namespace" >&3
-    # Allow only IPv4 without ARP — ping needs ARP to resolve the MAC
+    # Allow only IPv4 without ARP - ping needs ARP to resolve the MAC
     # address, so blocking ARP at L2 prevents the ping from completing
     run ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress allow_ethertype ipv4 >/dev/null 3>&- &
     sleep 1
     run ip netns exec "${NETNS}" tc qdisc show dev "${PEER}" clsact
     [ "$(echo $output | xargs)" == "qdisc clsact ffff: parent ffff:fff1" ]
+    # Flush neighbor cache so the next ping must ARP-resolve
+    ip netns exec "${NETNS}" ip neigh flush dev "${PEER}"
     run ip netns exec "${NETNS}" ping -W1 -4 -c1 "${VETH_ADDR}"
     [ $status -eq 1 ]
     echo "# cannot ping ${VETH_ADDR} (ARP blocked, cannot resolve MAC)" >&3
@@ -378,7 +380,7 @@ sys.exit(0)
     run ip netns exec "${NETNS}" ping -W1 -4 -c1 "${VETH_ADDR}"
     [ $status -eq 0 ]
     echo "# can ping ${VETH_ADDR} from the namespace" >&3
-    # Only allow IPv6 in the chain — IPv4 ping should be blocked by allow_ethertype
+    # Only allow IPv6 in the chain - IPv4 ping should be blocked by allow_ethertype
     run ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress --chain "allow_ethertype:ipv6,allow_ipv4:${VETH_ADDR}" >/dev/null 3>&- &
     sleep 1
     run ip netns exec "${NETNS}" tc qdisc show dev "${PEER}" clsact

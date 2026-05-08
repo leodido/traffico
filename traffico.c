@@ -255,6 +255,10 @@ static error_t parse_cli(int key, char *arg, struct argp_state *state)
                 {
                     argp_error(state, "program '%s' does not support chaining", prog_name);
                 }
+                if (g_chain[g_chain_len].program == program_allow_ethertype && g_chain_len != 0)
+                {
+                    argp_error(state, "program 'allow_ethertype' must be first in a chain");
+                }
 
                 // Parse input for this program
                 if (input_str)
@@ -280,6 +284,17 @@ static error_t parse_cli(int key, char *arg, struct argp_state *state)
             if (g_chain_len == 0)
             {
                 argp_error(state, "--chain requires at least one program");
+            }
+            if (g_chain_len > 1 && g_chain[0].program == program_allow_ethertype)
+            {
+                for (__u8 j = 0; j < g_chain[0].input.ethertypes.count; j++)
+                {
+                    __u16 v = g_chain[0].input.ethertypes.values[j];
+                    if (v == 0x8100 || v == 0x88A8)
+                    {
+                        argp_error(state, "VLAN EtherTypes in allow_ethertype chains require VLAN-aware L3/L4 parsing");
+                    }
+                }
             }
         }
         else

@@ -128,9 +128,9 @@ BUILT-IN PROGRAMS
         outside their domain (e.g., non-IPv4 frames), which bypasses
         any downstream allow_ethertype filter.
 
-        On VLAN-tagged networks (802.1Q), the outer EtherType is the
-        VLAN tag protocol (0x8100), not the payload type. Include
-        0x8100 in the allowed set to avoid dropping tagged frames.
+        VLAN TPIDs (0x8100, 0x88A8) are only supported in standalone
+        mode. In chains, they are rejected because downstream L3/L4
+        programs cannot yet parse VLAN-encapsulated payloads.
 
     allow_ipv4
         allow_ipv4 allows IPv4 traffic to the input address, drops the

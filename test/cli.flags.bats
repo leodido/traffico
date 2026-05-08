@@ -173,6 +173,18 @@ bats_require_minimum_version 1.7.0
     [ "${lines[0]}" == "traffico: program 'nop' does not support chaining" ]
 }
 
+@test "--chain rejects allow_ethertype not in slot 0" {
+    run traffico -i lo --chain "allow_ipv4:127.0.0.1,allow_ethertype:ipv4+arp"
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: program 'allow_ethertype' must be first in a chain" ]
+}
+
+@test "--chain rejects VLAN TPIDs in multi-program chain" {
+    run timeout 2 traffico -i lo --chain "allow_ethertype:ipv4+0x8100,allow_ipv4:127.0.0.1"
+    [ $status -ne 0 ]
+    [[ "$output" == *"VLAN EtherTypes"* ]]
+}
+
 @test "--chain mutually exclusive with positional args" {
     run traffico -i lo --chain "nop" nop
     [ $status -eq 1 ]
