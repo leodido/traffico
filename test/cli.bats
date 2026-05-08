@@ -19,6 +19,7 @@ teardown() {
     echo "# teardown:" >&3
 
     killall traffico &>/dev/null || true
+    killall -9 python3 &>/dev/null || true
     del_server
     del_netdev
     del_netns "${NETNS}"

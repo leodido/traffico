@@ -251,6 +251,10 @@ static error_t parse_cli(int key, char *arg, struct argp_state *state)
                 {
                     argp_error(state, "unknown program in chain: '%s'", prog_name);
                 }
+                if (!program_supports_chaining(g_chain[g_chain_len].program))
+                {
+                    argp_error(state, "program '%s' does not support chaining", prog_name);
+                }
 
                 // Parse input for this program
                 if (input_str)

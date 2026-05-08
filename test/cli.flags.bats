@@ -162,9 +162,15 @@ bats_require_minimum_version 1.7.0
 }
 
 @test "--chain with too many entries" {
-    run traffico -i lo --chain "nop,nop,nop,nop,nop,nop,nop,nop,nop"
+    run traffico -i lo --chain "allow_ipv4:1.2.3.4,allow_ipv4:1.2.3.4,allow_ipv4:1.2.3.4,allow_ipv4:1.2.3.4,allow_ipv4:1.2.3.4,allow_ipv4:1.2.3.4,allow_ipv4:1.2.3.4,allow_ipv4:1.2.3.4,allow_ipv4:1.2.3.4"
     [ $status -eq 1 ]
     [ "${lines[0]}" == "traffico: chain exceeds maximum of 8 programs" ]
+}
+
+@test "--chain with unsupported program" {
+    run traffico -i lo --chain "nop"
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: program 'nop' does not support chaining" ]
 }
 
 @test "--chain mutually exclusive with positional args" {
