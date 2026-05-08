@@ -120,7 +120,7 @@ Here's an example CNI config file featuring `traffico-cni`.
 | Program | Description |
 |---|---|
 | `allow_ipv4` | Allows IPv4 traffic to the input address, drops the rest. Non-IPv4 passes through for L2/chain policy. Localhost (127.0.0.0/8) always allowed. |
-| `allow_port` | Drops all TCP/UDP packets except those destined for the input port (non-TCP/UDP unaffected) |
+| `allow_port` | Allows IPv4 TCP/UDP traffic to the input port, drops the rest. Other protocols (ICMP, etc.) pass through. Non-IPv4 blocked. |
 | `block_private_ipv4` | Blocks private IPv4 addresses subnets allowing only SSH access on port 22 |
 | `block_ipv4` | Drops packets with destination equal to the input IPv4 address |
 | `block_port` | Drops packets with the destination port equal to the input port number |

@@ -117,9 +117,9 @@ BUILT-IN PROGRAMS
         traffic is always allowed.
 
     allow_port
-        allow_port is a program that drops all TCP/UDP packets except those
-        with destination port equal to the input port number. Non-TCP/UDP
-        protocols (ICMP, etc.) are not affected.
+        allow_port allows IPv4 TCP/UDP traffic to the input destination
+        port, drops the rest. Other protocols (ICMP, etc.) pass
+        through. Non-IPv4 traffic is blocked.
 
     block_private_ipv4
         block_private_ipv4 is a program that can be used to block
