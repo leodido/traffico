@@ -24,7 +24,7 @@ int allow_dns(struct __sk_buff *skb)
         return TC_ACT_SHOT;
     }
 
-    // Passthrough: not IPv4 — DNS filtering doesn't apply.
+    // Passthrough: not IPv4 - DNS filtering doesn't apply.
     // Non-IPv4 filtering is allow_ethertype's job.
     if (eth->h_proto != bpf_htons(ETH_P_IP))
     {
@@ -59,7 +59,7 @@ int allow_dns(struct __sk_buff *skb)
         return TC_ACT_SHOT;
     }
 
-    // Passthrough: not TCP/UDP — DNS filtering doesn't apply.
+    // Passthrough: not TCP/UDP - DNS filtering doesn't apply.
     // Protocol filtering is allow_proto's job.
     if (ip_header->protocol != IPPROTO_TCP && ip_header->protocol != IPPROTO_UDP)
     {
@@ -77,7 +77,7 @@ int allow_dns(struct __sk_buff *skb)
     __u16 *dst_port_ptr = (__u16 *)(data + l4_offset + 2); // skip 2-byte src_port
     __u16 dst_port = bpf_ntohs(*dst_port_ptr);
 
-    // Passthrough: not DNS traffic — allow_dns only restricts which
+    // Passthrough: not DNS traffic - allow_dns only restricts which
     // resolver handles DNS. Port filtering is allow_port's job.
     if (dst_port != DNS_PORT)
     {
@@ -85,7 +85,7 @@ int allow_dns(struct __sk_buff *skb)
         return TC_ACT_OK;
     }
 
-    // DNS traffic — check dest IP against approved resolver
+    // DNS traffic - check dest IP against approved resolver
     u32 dest = bpf_ntohl(ip_header->daddr);
 
     if (dest != input)

@@ -51,7 +51,7 @@ int allow_port(struct __sk_buff *skb)
         return TC_ACT_SHOT;
     }
 
-    // Passthrough: not TCP/UDP — port filtering doesn't apply.
+    // Passthrough: not TCP/UDP - port filtering doesn't apply.
     // Protocol filtering is allow_proto's job.
     if (ip_header->protocol != IPPROTO_TCP && ip_header->protocol != IPPROTO_UDP)
     {
