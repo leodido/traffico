@@ -111,8 +111,9 @@ USAGE
 BUILT-IN PROGRAMS
 
     allow_ipv4
-        allow_ipv4 is a program that drops all packets except those with
-        destination equal to the input IPv4 address. Localhost (127.0.0.0/8)
+        allow_ipv4 allows IPv4 traffic to the input address, drops the
+        rest. Non-IPv4 traffic passes through and should be constrained
+        by L2 or chain policy when needed. Localhost (127.0.0.0/8)
         traffic is always allowed.
 
     block_private_ipv4
