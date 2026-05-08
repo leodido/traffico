@@ -273,13 +273,13 @@ static inline bool program_supports_chaining(program_t program)
 /// Attach a chain of programs using the dispatcher + tail calls.
 ///
 /// 1. Validate all chain entries before touching TC
-/// 2. Load and attach the dispatcher to TC
-/// 3. For each entry: load the program, set rodata, insert into prog_array
-/// 4. Pin prog_array to bpffs for persistence
+/// 2. Load the dispatcher (off-path, not yet attached to TC)
+/// 3. Get prog_array FD, pin it (best-effort)
+/// 4. Load each chain program and populate prog_array
+/// 5. Attach the fully populated dispatcher to TC
 ///
-/// On failure, always cleans up resources created by this call,
-/// regardless of cleanup_on_exit. The --no-cleanup flag only preserves
-/// state after a successful attach.
+/// Pre-attach failures leave existing TC state untouched.
+/// The --no-cleanup flag only preserves state after a successful attach.
 int attach_chain(struct config *conf,
                  struct chain_entry *entries, int chain_len,
                  after_attach_fn_t cb)
@@ -306,7 +306,9 @@ int attach_chain(struct config *conf,
         }
     }
 
-    // 2. Load and attach the dispatcher
+    // 2. Load the dispatcher and populate its prog_array before replacing
+    // any live TC filter. Until slot 0 is populated, dispatcher falls back to
+    // TC_ACT_OK, so attaching it early creates a fail-open window.
     struct dispatcher_bpf *dispatcher = dispatcher_bpf__open();
     if (!dispatcher)
     {
@@ -322,45 +324,23 @@ int attach_chain(struct config *conf,
         goto destroy;
     }
 
-    DECLARE_LIBBPF_OPTS(bpf_tc_hook, hook,
-                        .ifindex = conf->ifindex,
-                        .attach_point = conf->attach_point);
-    err = bpf_tc_hook_create(&hook);
-    if (err && err != -EEXIST)
-    {
-        libbpf_strerror(err, buf, sizeof(buf));
-        log_err(conf, "fail: creating the qdisc: %s\n", buf);
-        goto destroy;
-    }
+    char pin_dir[256];
+    char pin_path[256];
+    bool pinned = false;
 
-    int dispatcher_fd = bpf_program__fd(dispatcher->progs.dispatcher);
-    DECLARE_LIBBPF_OPTS(bpf_tc_opts, opts,
-                        .prog_fd = dispatcher_fd,
-                        .flags = BPF_TC_F_REPLACE);
-    err = bpf_tc_attach(&hook, &opts);
-    if (err)
-    {
-        libbpf_strerror(err, buf, sizeof(buf));
-        log_err(conf, "fail: attaching dispatcher: %s\n", buf);
-        goto cleanup_hook;
-    }
-    log_out(conf, "done: attached dispatcher\n");
-
-    // 2. Get the prog_array map FD from the dispatcher
+    // 3. Get the prog_array map FD from the dispatcher
     int prog_array_fd = bpf_map__fd(dispatcher->maps.prog_array);
     if (prog_array_fd < 0)
     {
         log_err(conf, "fail: getting prog_array fd\n");
-        goto cleanup_hook;
+        err = -ENOENT;
+        goto destroy;
     }
 
-    // 3. Pin prog_array to bpffs for persistence (best-effort).
+    // 4. Pin prog_array to bpffs for persistence (best-effort).
     //    In CLI mode the process stays alive holding FDs, so pinning
     //    is not required. It only matters for CNI where the process
     //    exits after attach. If bpffs is not mounted we continue.
-    char pin_dir[256];
-    char pin_path[256];
-    bool pinned = false;
     snprintf(pin_dir, sizeof(pin_dir), "%s/%s", BPFFS_BASE, conf->ifname);
     snprintf(pin_path, sizeof(pin_path), "%s/prog_array", pin_dir);
     err = ensure_dir(pin_dir);
@@ -386,25 +366,48 @@ int attach_chain(struct config *conf,
         }
     }
 
-    // 5. Load each chain program
+    // 5. Load each chain program before attaching the dispatcher.
     for (int i = 0; i < chain_len; i++)
     {
         err = load_chain_program(conf, &entries[i], prog_array_fd, (__u32)i);
         if (err)
         {
             log_err(conf, "fail: loading chain program at slot %d\n", i);
-            // Always clean up on failure — a partial chain with an
-            // attached dispatcher is worse than no chain at all.
-            goto cleanup_failure;
+            goto cleanup_pre_attach;
         }
     }
 
+    // 6. Attach the fully populated dispatcher. bpf_tc_attach() is the
+    // first point at which packets can enter this chain.
+    DECLARE_LIBBPF_OPTS(bpf_tc_hook, hook,
+                        .ifindex = conf->ifindex,
+                        .attach_point = conf->attach_point);
+    err = bpf_tc_hook_create(&hook);
+    if (err && err != -EEXIST)
+    {
+        libbpf_strerror(err, buf, sizeof(buf));
+        log_err(conf, "fail: creating the qdisc: %s\n", buf);
+        goto cleanup_pre_attach;
+    }
+
+    int dispatcher_fd = bpf_program__fd(dispatcher->progs.dispatcher);
+    DECLARE_LIBBPF_OPTS(bpf_tc_opts, opts,
+                        .prog_fd = dispatcher_fd,
+                        .flags = BPF_TC_F_REPLACE);
+    err = bpf_tc_attach(&hook, &opts);
+    if (err)
+    {
+        libbpf_strerror(err, buf, sizeof(buf));
+        log_err(conf, "fail: attaching dispatcher: %s\n", buf);
+        goto cleanup_hook;
+    }
+    log_out(conf, "done: attached dispatcher\n");
     log_out(conf, "done: chain of %d programs attached\n", chain_len);
 
-    // 6. Callback (e.g., wait for signal in CLI mode)
+    // 7. Callback (e.g., wait for signal in CLI mode)
     err = cb(hook, opts);
 
-    // 7. Cleanup after callback returns (normal exit path)
+    // 8. Cleanup after callback returns (normal exit path)
     if (conf->cleanup_on_exit)
     {
         goto cleanup_success;
@@ -414,21 +417,13 @@ int attach_chain(struct config *conf,
     dispatcher_bpf__destroy(dispatcher);
     return 0;
 
-cleanup_failure:
-    // On failure, always clean up regardless of --no-cleanup.
-    // A partially attached chain is a security risk.
+cleanup_pre_attach:
+    // Pre-attach failure: do not touch existing TC state.
     if (pinned)
     {
         unlink(pin_path);
         rmdir(pin_dir);
     }
-    opts.prog_fd = opts.prog_id = 0;
-    opts.flags = 0;
-    bpf_tc_detach(&hook, &opts);
-    log_out(conf, "done: detached dispatcher (failure cleanup)\n");
-    hook.attach_point |= BPF_TC_INGRESS;
-    bpf_tc_hook_destroy(&hook);
-    log_out(conf, "done: destroyed qdisc (failure cleanup)\n");
     dispatcher_bpf__destroy(dispatcher);
     return err < 0 ? -err : err;
 
@@ -442,8 +437,10 @@ cleanup_success:
 cleanup_hook:
     opts.prog_fd = opts.prog_id = 0;
     opts.flags = 0;
-    bpf_tc_detach(&hook, &opts);
-    log_out(conf, "done: detached dispatcher\n");
+    if (bpf_tc_detach(&hook, &opts) == 0)
+    {
+        log_out(conf, "done: detached dispatcher\n");
+    }
 
     hook.attach_point |= BPF_TC_INGRESS;
     bpf_tc_hook_destroy(&hook);
