@@ -35,6 +35,12 @@ int allow_ipv4(struct __sk_buff *skb)
         return TC_ACT_SHOT;
     }
 
+    if (ip_header->version != 4)
+    {
+        bpf_printk("allow_ipv4: [iph] invalid version %d: block", ip_header->version);
+        return TC_ACT_SHOT;
+    }
+
     __u8 ihl = ip_header->ihl;
     if (ihl < 5)
     {
