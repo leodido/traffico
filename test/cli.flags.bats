@@ -336,10 +336,13 @@ bats_require_minimum_version 1.7.0
 }
 
 @test "protocol 0 is accepted" {
-    run timeout 2 traffico -i lo allow_proto 0
-    [ $status -ne 0 ]
-    # Accept either an unprivileged BPF-load failure or a privileged timeout
-    # after successful attach; both cases mean parsing accepted protocol 0.
+    # Verify the parser does not reject protocol 0.
+    # With a valid interface, traffico proceeds past parsing to BPF load:
+    #   - unprivileged: BPF load fails immediately (exit 1)
+    #   - privileged: attaches and runs until signalled (exit 124)
+    # Either way, output must not contain a parser rejection message.
+    # Use SIGINT so traffico cleans up BPF programs on lo before exiting.
+    run timeout --signal=INT 1 traffico -i lo allow_proto 0
     [[ "$output" != *"invalid"* ]]
     [[ "$output" != *"out of range"* ]]
     [[ "$output" != *"unknown"* ]]
