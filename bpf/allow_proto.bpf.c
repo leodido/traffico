@@ -5,6 +5,12 @@
 
 char LICENSE[] SEC("license") = "Dual BSD/GPL";
 
+struct traffico_vlan_hdr
+{
+    __u16 h_vlan_tci;
+    __u16 h_vlan_encapsulated_proto;
+};
+
 const volatile __u8 allowed[MAX_MULTI_VALUES] = {};
 const volatile __u8 num_allowed = 0;
 const volatile __u32 slot = 0; // position in the chain (set by userspace)
@@ -18,7 +24,7 @@ int allow_proto(struct __sk_buff *skb)
     void *data = (void *)(unsigned long long)skb->data;
 
     struct ethhdr *eth = data;
-    const int l3_offset = sizeof(*eth);
+    int l3_offset = sizeof(*eth);
 
     if (data + l3_offset > data_end)
     {
@@ -26,11 +32,41 @@ int allow_proto(struct __sk_buff *skb)
         return TC_ACT_SHOT;
     }
 
-    // Passthrough: not IPv4 — protocol filtering doesn't apply.
-    // Non-IPv4 filtering is allow_ethertype's job.
-    if (eth->h_proto != bpf_htons(ETH_P_IP))
+    __u16 h_proto = eth->h_proto;
+
+    // Unwrap up to 2 VLAN tags (802.1Q and/or QinQ)
+#pragma unroll
+    for (int i = 0; i < 2; i++)
     {
-        bpf_printk("allow_proto: [eth] protocol is %d: continue", eth->h_proto);
+        if (h_proto != bpf_htons(ETH_P_8021Q) &&
+            h_proto != bpf_htons(ETH_P_8021AD))
+            break;
+
+        if (data + l3_offset + sizeof(struct traffico_vlan_hdr) > data_end)
+        {
+            bpf_printk("allow_proto: [vlan] size length check hit: block");
+            return TC_ACT_SHOT;
+        }
+
+        struct traffico_vlan_hdr *vlan = data + l3_offset;
+        h_proto = vlan->h_vlan_encapsulated_proto;
+        l3_offset += sizeof(*vlan);
+    }
+
+    // Fail closed on unsupported VLAN nesting (>2 tags)
+    if (h_proto == bpf_htons(ETH_P_8021Q) ||
+        h_proto == bpf_htons(ETH_P_8021AD))
+    {
+        bpf_printk("allow_proto: [vlan] unsupported nesting: block");
+        return TC_ACT_SHOT;
+    }
+
+    // Passthrough: not IPv4 - protocol filtering doesn't apply.
+    // Non-IPv4 filtering is allow_ethertype's job.
+    if (h_proto != bpf_htons(ETH_P_IP))
+    {
+        bpf_printk("allow_proto: [eth] protocol is %d: continue", bpf_ntohs(h_proto));
+        tail_call_next(skb, slot);
         return TC_ACT_OK;
     }
 

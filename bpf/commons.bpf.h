@@ -23,6 +23,14 @@
 #define ETH_P_ARP 0x0806
 #endif
 
+#ifndef ETH_P_8021Q
+#define ETH_P_8021Q 0x8100
+#endif
+
+#ifndef ETH_P_8021AD
+#define ETH_P_8021AD 0x88A8
+#endif
+
 /// Maximum number of values in a multi-value rodata input.
 /// Must match MAX_MULTI_VALUES in api.h.
 #define MAX_MULTI_VALUES 8
