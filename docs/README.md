@@ -139,6 +139,8 @@ Here's an example CNI config file featuring `traffico-cni`.
 
 **Chain ordering:** In a chain, `allow_proto` should be placed after `allow_ethertype` and before `allow_port`/`allow_dns`. This gives L2 → L3 → L4 ordering with cheapest checks first. Example: `--chain "allow_ethertype:ipv4+arp,allow_proto:tcp+udp,allow_port:8080"`.
 
+**VLAN-tagged IPv4:** `allow_proto` unwraps supported 802.1Q and QinQ tags before reading the IPv4 protocol. Truncated VLAN headers and unsupported additional VLAN nesting fail closed.
+
 **Non-IPv4 passthrough:** Non-IPv4 traffic (ARP, IPv6) passes through unfiltered. L2 filtering is `allow_ethertype`'s responsibility.
 
 ## Build

@@ -145,6 +145,9 @@ BUILT-IN PROGRAMS
 
         In a chain, allow_proto should be placed after allow_ethertype
         and before allow_port (L2 -> L3 -> L4 ordering).
+        VLAN/QinQ-tagged IPv4 is unwrapped before checking the IP
+        protocol; truncated VLAN headers and unsupported additional
+        VLAN nesting fail closed.
 
     allow_ipv4
         allow_ipv4 allows IPv4 traffic to the input address, drops the
