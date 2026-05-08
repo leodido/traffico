@@ -2,6 +2,7 @@
 #define TRAFFICO_INPUT_PARSE_H
 
 #include <arpa/inet.h>
+#include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
@@ -70,7 +71,7 @@ static inline bool token_has_whitespace(const char *token)
 {
     for (const char *p = token; *p; p++)
     {
-        if (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r')
+        if (isspace((unsigned char)*p))
             return true;
     }
     return false;
