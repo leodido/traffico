@@ -189,6 +189,79 @@ s.close()
     kill $DNS_PID 2>/dev/null || true
 }
 
+@test "allow_dns permits UDP DNS to approved resolver" {
+    python3 -c "
+import socket
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+s.bind(('${VETH_ADDR}', 53))
+s.settimeout(5)
+try:
+    data, addr = s.recvfrom(512)
+    s.sendto(b'ok', addr)
+except Exception:
+    pass
+s.close()
+" &
+    DNS_PID=$!
+    sleep 0.5
+    run ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress allow_dns "${VETH_ADDR}" >/dev/null 3>&- &
+    sleep 1
+    run ip netns exec "${NETNS}" tc qdisc show dev "${PEER}" clsact
+    [ "$(echo $output | xargs)" == "qdisc clsact ffff: parent ffff:fff1" ]
+    run ip netns exec "${NETNS}" python3 -c "
+import socket, sys
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+s.settimeout(2)
+s.sendto(b'q', ('${VETH_ADDR}', 53))
+try:
+    data, _ = s.recvfrom(512)
+except Exception:
+    sys.exit(1)
+sys.exit(0 if data == b'ok' else 1)
+"
+    [ $status -eq 0 ]
+    echo "# UDP DNS to approved resolver ${VETH_ADDR}:53 allowed" >&3
+    kill $DNS_PID 2>/dev/null || true
+}
+
+@test "allow_dns blocks UDP DNS to other resolvers" {
+    python3 -c "
+import socket
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+s.bind(('${VETH_ADDR}', 53))
+s.settimeout(5)
+try:
+    data, addr = s.recvfrom(512)
+    s.sendto(b'ok', addr)
+except Exception:
+    pass
+s.close()
+" &
+    DNS_PID=$!
+    sleep 0.5
+    # Allow DNS only to PEER_ADDR (not VETH_ADDR where the server is)
+    run ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress allow_dns "${PEER_ADDR}" >/dev/null 3>&- &
+    sleep 1
+    run ip netns exec "${NETNS}" tc qdisc show dev "${PEER}" clsact
+    [ "$(echo $output | xargs)" == "qdisc clsact ffff: parent ffff:fff1" ]
+    run ip netns exec "${NETNS}" python3 -c "
+import socket, sys
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+s.settimeout(2)
+s.sendto(b'q', ('${VETH_ADDR}', 53))
+try:
+    s.recvfrom(512)
+except Exception:
+    sys.exit(1)
+sys.exit(0)
+"
+    [ ! $status -eq 0 ]
+    echo "# UDP DNS to ${VETH_ADDR}:53 blocked (only ${PEER_ADDR} allowed)" >&3
+    kill $DNS_PID 2>/dev/null || true
+}
+
 @test "allow_dns does not block non-DNS traffic" {
     new_server
     run ip netns exec "${NETNS}" curl --max-time 1 --silent "${VETH_ADDR}:${SERVER_PORT}" >/dev/null
