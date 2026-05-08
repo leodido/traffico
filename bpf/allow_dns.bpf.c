@@ -77,8 +77,8 @@ int allow_dns(struct __sk_buff *skb)
     __u16 *dst_port_ptr = (__u16 *)(data + l4_offset + 2); // skip 2-byte src_port
     __u16 dst_port = bpf_ntohs(*dst_port_ptr);
 
-    // Passthrough: not DNS traffic - allow_dns only restricts which
-    // resolver handles DNS. Port filtering is allow_port's job.
+    // Passthrough: not DNS traffic - allow_dns only restricts which resolver handles DNS.
+    // Port filtering is allow_port's job.
     if (dst_port != DNS_PORT)
     {
         bpf_printk("allow_dns: [l4] port %d is not DNS: allow", dst_port);
