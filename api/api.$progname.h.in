@@ -35,7 +35,30 @@ int ${OPERATION}${PROGNAME}(struct config *conf, after_attach_fn_t cb)
             log_err(conf, "fail: allocating rodata buffer\n");
             goto destroy_${PROGNAME};
         }
+#if ${PROGNAME_IS_MULTI_VALUE}
+        size_t input_sz = sizeof(conf->input.${PROGNAME_INPUT_FIELD}.values) +
+                          sizeof(conf->input.${PROGNAME_INPUT_FIELD}.count);
+#else
+        size_t input_sz = sizeof(conf->input.${PROGNAME_INPUT_FIELD});
+#endif
+        if (input_sz > rodata_sz)
+        {
+            log_err(conf, "fail: rodata map too small for input\n");
+            free(rodata_buf);
+            err = 1;
+            goto destroy_${PROGNAME};
+        }
+
+#if ${PROGNAME_IS_MULTI_VALUE}
+        memcpy(rodata_buf,
+               conf->input.${PROGNAME_INPUT_FIELD}.values,
+               sizeof(conf->input.${PROGNAME_INPUT_FIELD}.values));
+        memcpy((char *)rodata_buf + sizeof(conf->input.${PROGNAME_INPUT_FIELD}.values),
+               &conf->input.${PROGNAME_INPUT_FIELD}.count,
+               sizeof(conf->input.${PROGNAME_INPUT_FIELD}.count));
+#else
         memcpy(rodata_buf, &conf->input.${PROGNAME_INPUT_FIELD}, sizeof(conf->input.${PROGNAME_INPUT_FIELD}));
+#endif
         err = bpf_map__set_initial_value(rodata_map, rodata_buf, rodata_sz);
         free(rodata_buf);
         if (err)
