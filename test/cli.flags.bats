@@ -336,10 +336,11 @@ bats_require_minimum_version 1.7.0
 }
 
 @test "protocol 0 is accepted" {
-    run traffico -i lo allow_proto 0
-    # Exit 1 from BPF load (no root), not from parsing.
-    # If parsing rejected 0, the error message would mention "invalid" or "out of range".
-    [[ "${lines[0]}" != *"invalid"* ]]
-    [[ "${lines[0]}" != *"out of range"* ]]
-    [[ "${lines[0]}" != *"unknown"* ]]
+    run timeout 2 traffico -i lo allow_proto 0
+    [ $status -ne 0 ]
+    # Accept either an unprivileged BPF-load failure or a privileged timeout
+    # after successful attach; both cases mean parsing accepted protocol 0.
+    [[ "$output" != *"invalid"* ]]
+    [[ "$output" != *"out of range"* ]]
+    [[ "$output" != *"unknown"* ]]
 }
