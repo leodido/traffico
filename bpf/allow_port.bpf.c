@@ -22,12 +22,12 @@ int allow_port(struct __sk_buff *skb)
         return TC_ACT_SHOT;
     }
 
-    // Passthrough: not IPv4 — port filtering doesn't apply.
-    // Non-IPv4 filtering is allow_ethertype's job.
+    // Fail closed for unsupported L3. IPv6 TCP/UDP has destination ports too,
+    // and passing it here would bypass this L4 allowlist.
     if (eth->h_proto != bpf_htons(ETH_P_IP))
     {
-        bpf_printk("allow_port: [eth] protocol is %d: continue", eth->h_proto);
-        return TC_ACT_OK;
+        bpf_printk("allow_port: [eth] unsupported ethertype %d: block", eth->h_proto);
+        return TC_ACT_SHOT;
     }
 
     struct iphdr *ip_header = data + l3_offset;
@@ -51,18 +51,18 @@ int allow_port(struct __sk_buff *skb)
         return TC_ACT_SHOT;
     }
 
-    if (ip_is_subsequent_fragment(skb, l3_offset))
-    {
-        bpf_printk("allow_port: [iph] subsequent fragment: block");
-        return TC_ACT_SHOT;
-    }
-
     // Passthrough: not TCP/UDP — port filtering doesn't apply.
     // Protocol filtering is allow_proto's job.
     if (ip_header->protocol != IPPROTO_TCP && ip_header->protocol != IPPROTO_UDP)
     {
         bpf_printk("allow_port: [iph] protocol %d is not TCP/UDP: allow", ip_header->protocol);
         return TC_ACT_OK;
+    }
+
+    if (ip_is_subsequent_fragment(skb, l3_offset))
+    {
+        bpf_printk("allow_port: [iph] subsequent TCP/UDP fragment: block");
+        return TC_ACT_SHOT;
     }
 
     // Both TCP and UDP headers start with src_port (u16) then dst_port (u16)
