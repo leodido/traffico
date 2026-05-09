@@ -84,6 +84,13 @@ int allow_proto(struct __sk_buff *skb)
         return TC_ACT_SHOT;
     }
 
+    const int l4_offset = l3_offset + (ihl * 4);
+    if (data + l4_offset > data_end)
+    {
+        bpf_printk("allow_proto: [iph] IHL extends beyond packet: block");
+        return TC_ACT_SHOT;
+    }
+
     __u8 proto = ip_header->protocol;
 
     // Linear scan of the allowed IP protocols.
