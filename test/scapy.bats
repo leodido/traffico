@@ -39,6 +39,142 @@ teardown() {
 }
 
 # --------------------------------------------------------------------------
+# allow_ipv4
+# --------------------------------------------------------------------------
+
+@test "allow_ipv4: drops packet with invalid IHL" {
+    ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress allow_ipv4 "${VETH_ADDR}" >/dev/null 3>&- &
+    sleep 1
+
+    assert_packet_blocked "${NETNS}" 4001 \
+        --type ipv4-invalid-ihl --dst-ip "${VETH_ADDR}"
+    echo "# blocked IPv4 packet with IHL < 5 to ${VETH_ADDR}" >&3
+}
+
+@test "allow_ipv4: drops packet with truncated IPv4 header" {
+    ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress allow_ipv4 "${VETH_ADDR}" >/dev/null 3>&- &
+    sleep 1
+
+    assert_packet_blocked "${NETNS}" 4002 \
+        --type ipv4-truncated-ihl --dst-ip "${VETH_ADDR}"
+    echo "# blocked IPv4 packet whose IHL extends beyond packet data" >&3
+}
+
+@test "allow_ipv4: allows non-IPv4 EtherType" {
+    ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress allow_ipv4 "${VETH_ADDR}" >/dev/null 3>&- &
+    sleep 1
+
+    assert_packet_seen "${NETNS}" 4003 \
+        --type ipv6-tcp --dst-port 8787
+    echo "# allowed IPv6 TCP packet through IPv4-only allowlist" >&3
+}
+
+# --------------------------------------------------------------------------
+# allow_port
+# --------------------------------------------------------------------------
+
+@test "allow_port: drops non-IPv4 EtherType" {
+    ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress allow_port 8787 >/dev/null 3>&- &
+    sleep 1
+
+    assert_packet_blocked "${NETNS}" 5001 \
+        --type non-ipv4-tcp --dst-ip "${VETH_ADDR}" --dst-port 8787
+    echo "# blocked non-IPv4 EtherType carrying TCP-like payload to allowed port" >&3
+}
+
+@test "allow_port: drops IPv6 TCP to allowed port" {
+    ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress allow_port 8787 >/dev/null 3>&- &
+    sleep 1
+
+    assert_packet_blocked "${NETNS}" 5002 \
+        --type ipv6-tcp --dst-port 8787
+    echo "# blocked IPv6 TCP to allowed IPv4 TCP/UDP port" >&3
+}
+
+@test "allow_port: allows fragmented non-TCP/UDP IPv4" {
+    ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress allow_port 8787 >/dev/null 3>&- &
+    sleep 1
+
+    assert_packet_seen "${NETNS}" 5003 \
+        --type fragment-subsequent --dst-ip "${VETH_ADDR}" --frag-offset 10 --proto-override 1
+    echo "# allowed subsequent non-TCP/UDP IPv4 fragment" >&3
+}
+
+@test "allow_port: drops packet with truncated L4 header" {
+    ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress allow_port 8787 >/dev/null 3>&- &
+    sleep 1
+
+    assert_packet_blocked "${NETNS}" 5004 \
+        --type ipv4-truncated-l4 --dst-ip "${VETH_ADDR}"
+    echo "# blocked IPv4 TCP packet with fewer than four L4 bytes" >&3
+}
+
+# --------------------------------------------------------------------------
+# allow_dns
+# --------------------------------------------------------------------------
+
+@test "allow_dns: allows non-IPv4 EtherType" {
+    ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress allow_dns "${VETH_ADDR}" >/dev/null 3>&- &
+    sleep 1
+
+    assert_packet_seen "${NETNS}" 6001 \
+        --type non-ipv4-tcp --dst-ip "${VETH_ADDR}" --dst-port 53
+    echo "# allowed non-IPv4 EtherType carrying DNS-like payload" >&3
+}
+
+@test "allow_dns: drops packet with truncated L4 header" {
+    ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress allow_dns "${VETH_ADDR}" >/dev/null 3>&- &
+    sleep 1
+
+    assert_packet_blocked "${NETNS}" 6002 \
+        --type ipv4-truncated-l4 --dst-ip "${VETH_ADDR}"
+    echo "# blocked IPv4 DNS candidate with fewer than four L4 bytes" >&3
+}
+
+@test "allow_dns: allows non-TCP/UDP protocol with DNS-shaped payload" {
+    ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress allow_dns "${VETH_ADDR}" >/dev/null 3>&- &
+    sleep 1
+
+    assert_packet_seen "${NETNS}" 6003 \
+        --type ipv4-non-l4-dns-port --dst-ip "${VETH_ADDR}"
+    echo "# allowed non-TCP/UDP IPv4 packet with DNS port-shaped payload" >&3
+}
+
+# --------------------------------------------------------------------------
+# allow_ethertype
+# --------------------------------------------------------------------------
+
+@test "allow_ethertype: drops truncated Ethernet frame" {
+    ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress allow_ethertype ipv4 >/dev/null 3>&- &
+    sleep 1
+
+    run ip netns exec "${NETNS}" tc qdisc show dev "${PEER}" clsact
+    [ "$(echo $output | xargs)" == "qdisc clsact ffff: parent ffff:fff1" ]
+
+    assert_packet_blocked "${NETNS}" 7001 \
+        --type ethernet-truncated
+    echo "# blocked frame shorter than Ethernet header" >&3
+}
+
+@test "allow_ethertype: drops QinQ when only inner EtherType is allowed" {
+    ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress allow_ethertype ipv4 >/dev/null 3>&- &
+    sleep 1
+
+    assert_packet_blocked "${NETNS}" 7003 \
+        --type qinq-inner-ipv4 --dst-ip "${VETH_ADDR}"
+    echo "# blocked QinQ frame when only the inner IPv4 EtherType matches" >&3
+}
+
+@test "allow_ethertype: drops disallowed EtherType" {
+    ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress allow_ethertype ipv4 >/dev/null 3>&- &
+    sleep 1
+
+    assert_packet_blocked "${NETNS}" 7004 \
+        --type non-ipv4-tcp --dst-ip "${VETH_ADDR}" --dst-port 8787
+    echo "# blocked frame whose EtherType is not in the allowed set" >&3
+}
+
+# --------------------------------------------------------------------------
 # block_ipv4
 # --------------------------------------------------------------------------
 
