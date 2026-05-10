@@ -33,16 +33,31 @@ local internal_programs = {
     dispatcher = true,
 }
 
--- Look up metadata for a program, raising on missing entries.
+-- Look up and validate metadata for a program.
+-- Raises on missing entries or invalid field types so that omitting
+-- chainable (or any other required field) is a build failure.
 local function _get_metadata(progname)
     if internal_programs[progname] then
         return nil
     end
     local meta = program_metadata[progname]
-    if not meta then
-        raise("program '%s' has no entry in program_metadata — add one to xmake/modules/api.lua", progname)
+    if type(meta) ~= "table" then
+        raise("program '%s' has no table entry in program_metadata; add one to xmake/modules/api.lua", progname)
     end
-    return meta
+    if type(meta.chainable) ~= "boolean" then
+        raise("program '%s' must declare chainable = true or false in program_metadata", progname)
+    end
+    if meta.input ~= nil and type(meta.input) ~= "string" then
+        raise("program '%s' metadata input must be a string or nil", progname)
+    end
+    if meta.multi ~= nil and type(meta.multi) ~= "boolean" then
+        raise("program '%s' metadata multi must be true or false", progname)
+    end
+    return {
+        input = meta.input,
+        multi = meta.multi or false,
+        chainable = meta.chainable,
+    }
 end
 
 -- get sourcefiles
