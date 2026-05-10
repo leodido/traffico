@@ -24,6 +24,7 @@ int allow_ethertype(struct __sk_buff *skb)
         return TC_ACT_SHOT;
     }
 
+    // Compare the EtherType in the Ethernet header; VLAN tags are not unwrapped here.
     __u16 proto = bpf_ntohs(eth->h_proto);
 
     // Linear scan of the allowed EtherTypes.

@@ -54,8 +54,7 @@ int allow_port(struct __sk_buff *skb)
         return TC_ACT_SHOT;
     }
 
-    // Passthrough: not TCP/UDP - port filtering doesn't apply.
-    // Protocol filtering is allow_proto's job.
+    // Only TCP/UDP headers have the port layout checked below.
     if (ip_header->protocol != IPPROTO_TCP && ip_header->protocol != IPPROTO_UDP)
     {
         bpf_printk("allow_port: [iph] protocol %d is not TCP/UDP: allow", ip_header->protocol);
@@ -65,6 +64,7 @@ int allow_port(struct __sk_buff *skb)
 
     if (ip_is_subsequent_fragment(skb, l3_offset))
     {
+        // TCP/UDP subsequent fragments carry no L4 header, so the port cannot be enforced.
         bpf_printk("allow_port: [iph] subsequent TCP/UDP fragment: block");
         return TC_ACT_SHOT;
     }

@@ -87,6 +87,7 @@ int allow_proto(struct __sk_buff *skb)
     const int l4_offset = l3_offset + (ihl * 4);
     if (data + l4_offset > data_end)
     {
+        // The protocol byte is in the fixed header, but an oversized IHL is malformed input.
         bpf_printk("allow_proto: [iph] IHL extends beyond packet: block");
         return TC_ACT_SHOT;
     }
