@@ -1,0 +1,53 @@
+    case program_${PROGNAME}:
+    {
+        struct ${PROGNAME}_bpf *obj = ${PROGNAME}_bpf__open();
+        if (!obj)
+        {
+            log_err(conf, "fail: opening ${PROGNAME} skeleton\n");
+            return 1;
+        }
+
+        err = bpf_map__reuse_fd(obj->maps.prog_array, prog_array_fd);
+        if (err)
+        {
+            log_err(conf, "fail: reusing prog_array for ${PROGNAME}\n");
+            ${PROGNAME}_bpf__destroy(obj);
+            return 1;
+        }
+
+#if ${PROGNAME_WITH_RODATA}
+        if (entry->has_input)
+        {
+            err = set_chain_rodata(obj->maps.rodata,
+                                   &entry->input.${PROGNAME_INPUT_FIELD}, sizeof(entry->input.${PROGNAME_INPUT_FIELD}),
+                                   slot);
+            if (err)
+            {
+                log_err(conf, "fail: setting rodata for ${PROGNAME}\n");
+                ${PROGNAME}_bpf__destroy(obj);
+                return 1;
+            }
+        }
+#endif
+
+        err = ${PROGNAME}_bpf__load(obj);
+        if (err)
+        {
+            libbpf_strerror(err, buf, sizeof(buf));
+            log_err(conf, "fail: loading ${PROGNAME}: %s\n", buf);
+            ${PROGNAME}_bpf__destroy(obj);
+            return 1;
+        }
+
+        int prog_fd = bpf_program__fd(obj->progs.${PROGNAME});
+        err = bpf_map_update_elem(prog_array_fd, &slot, &prog_fd, BPF_ANY);
+        if (err)
+        {
+            log_err(conf, "fail: inserting ${PROGNAME} into prog_array slot %d\n", slot);
+            ${PROGNAME}_bpf__destroy(obj);
+            return 1;
+        }
+
+        log_out(conf, "done: loaded ${PROGNAME} at slot %d\n", slot);
+        break;
+    }

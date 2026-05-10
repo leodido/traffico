@@ -8,12 +8,15 @@ import("core.project.project")
 -- Multi-value programs use a table: { field = "ethertypes", multi = true }.
 -- The template uses PROGNAME_INPUT_FIELD for the union member name and
 -- PROGNAME_IS_MULTI_VALUE to distinguish array inputs from scalars.
+--
+-- Programs with chainable = true get a generated case block in
+-- load_chain_program() and are included in program_supports_chaining().
 local input_fields = {
-    allow_dns = "ip",
-    allow_ethertype = { field = "ethertypes", multi = true },
-    allow_ipv4 = "ip",
-    allow_port = "port",
-    allow_proto = { field = "protos", multi = true },
+    allow_dns = { field = "ip", chainable = true },
+    allow_ethertype = { field = "ethertypes", multi = true, chainable = true },
+    allow_ipv4 = { field = "ip", chainable = true },
+    allow_port = { field = "port", chainable = true },
+    allow_proto = { field = "protos", multi = true, chainable = true },
     block_ipv4 = "ip",
     block_port = "port",
 }
@@ -24,6 +27,20 @@ local input_fields = {
 local internal_programs = {
     dispatcher = true,
 }
+
+-- Normalize an input_fields entry into { field, multi, chainable }.
+local function normalize_input(raw)
+    if type(raw) == "string" then
+        return { field = raw, multi = false, chainable = false }
+    elseif type(raw) == "table" then
+        return {
+            field = raw.field,
+            multi = raw.multi or false,
+            chainable = raw.chainable or false,
+        }
+    end
+    return nil
+end
 
 -- get sourcefiles
 function _get_programs(target_name)
@@ -60,15 +77,9 @@ function gen(target, source_target)
         local tempconf = path.join(os.tmpdir(), confname)
         os.tryrm(tempconf)
         os.cp(configfile_template_path, tempconf)
-        local raw = input_fields[progname]
-        local input_field = nil
-        local is_multi = false
-        if type(raw) == "string" then
-            input_field = raw
-        elseif type(raw) == "table" then
-            input_field = raw.field
-            is_multi = raw.multi or false
-        end
+        local norm = normalize_input(input_fields[progname])
+        local input_field = norm and norm.field or nil
+        local is_multi = norm and norm.multi or false
         local has_rodata = input_field and 1 or 0
 
         target:add("configfiles", tempconf, {
@@ -131,5 +142,83 @@ function main(target, components_target, banner)
     v["API"] = content
 
     local configfile = path.join(target:scriptdir(), "api.h.in")
+    target:add("configfiles", configfile, { variables = v })
+end
+
+--- Generate per-program chain case fragments from chain.$progname.h.in.
+--- Only programs with chainable = true in input_fields are included.
+function gen_chain(target, source_target)
+    if not target then
+        raise("could not configure target")
+    end
+
+    target:set("configdir", target:autogendir())
+
+    local configfile_template = "chain.$progname.h.in"
+    local configfile_template_path = path.join(target:scriptdir(), configfile_template)
+
+    local programs = _get_programs(source_target)
+    for _, p in ipairs(programs) do
+        local progname = string.match(path.basename(p), "(.+)%..+$")
+        local norm = normalize_input(input_fields[progname])
+        if not norm or not norm.chainable then
+            goto continue
+        end
+
+        local confname = string.gsub(configfile_template, "%$(%w+)", { progname = progname })
+        local tempconf = path.join(os.tmpdir(), confname)
+        os.tryrm(tempconf)
+        os.cp(configfile_template_path, tempconf)
+
+        local input_field = norm.field
+        local has_rodata = input_field and 1 or 0
+
+        target:add("configfiles", tempconf, {
+            variables = {
+                PROGNAME = progname,
+                PROGNAME_WITH_RODATA = has_rodata,
+                PROGNAME_INPUT_FIELD = input_field or "",
+            }
+        })
+
+        ::continue::
+    end
+end
+
+--- Assemble generated chain case fragments into chain.h via chain.h.in.
+function chain(target, components_target)
+    if not target then
+        raise("could not configure target")
+    end
+
+    local gendir = target:autogendir()
+    target:add("includedirs", gendir, { public = true })
+    target:set("configdir", gendir)
+
+    local v = {}
+
+    local _, components, vars = project.target(components_target):configfiles()
+
+    -- Build skeleton includes, case blocks, and supports-check from
+    -- the generated chain fragments.
+    local includes = {}
+    local cases = {}
+    local supports = {}
+
+    for i, pv in ipairs(vars) do
+        local progname = pv.variables.PROGNAME
+        table.insert(includes, '#include "' .. progname .. '.skel.h"')
+        table.insert(cases, io.readfile(components[i]))
+        table.insert(supports, "program == program_" .. progname)
+    end
+
+    table.sort(includes)
+    table.sort(supports)
+
+    v["CHAIN_SKELETON_INCLUDES"] = table.concat(includes, "\n")
+    v["CHAIN_CASES"] = table.concat(cases, "\n")
+    v["CHAIN_SUPPORTS_CHECK"] = table.concat(supports, " ||\n           ")
+
+    local configfile = path.join(target:scriptdir(), "chain.h.in")
     target:add("configfiles", configfile, { variables = v })
 end

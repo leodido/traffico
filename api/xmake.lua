@@ -31,3 +31,28 @@ target("api")
         import("actions.config.configfiles", { alias = "gen_configfiles", rootdir = os.programdir() })
         gen_configfiles()
     end)
+
+-- target to generate chain case fragments for every chainable BPF program
+target("every.chain")
+    set_kind("headeronly")
+    includes("../bpf")
+    add_deps("bpf")
+    on_config(function(target)
+        import("xmake.modules.api", { rootdir = os.projectdir() })
+        api.gen_chain(target, "bpf")
+
+        import("actions.config.configfiles", { alias = "gen_configfiles", rootdir = os.programdir() })
+        gen_configfiles()
+    end)
+
+-- target to assemble chain.h from generated case fragments
+target("chain")
+    set_kind("headeronly")
+    add_deps("every.chain", "api")
+    on_config(function(target)
+        import("xmake.modules.api", { rootdir = os.projectdir() })
+        api.chain(target, "every.chain")
+
+        import("actions.config.configfiles", { alias = "gen_configfiles", rootdir = os.programdir() })
+        gen_configfiles()
+    end)
