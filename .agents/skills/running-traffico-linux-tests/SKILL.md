@@ -7,15 +7,9 @@ description: Use when working in the traffico repository and needing to run or v
 
 ## Overview
 
-Traffico's full BATS suite needs a privileged Linux/AMD64 container. Use this Ubuntu 24.04 runner so CNI, Scapy, netns, veth, tc, and eBPF tests run with the same distro family as CI while xmake dependencies stay cached.
+Traffico's full BATS suite needs a privileged Linux/AMD64 container. Use the Ubuntu 24.04 runner by default; it matches CI's distro family and avoids the Arch/pacman sandbox override.
 
-Ubuntu avoids the Arch/pacman sandbox override. The container still needs `--privileged` at runtime because the tests create network namespaces, veth pairs, tc qdiscs, and eBPF attachments.
-
-## When To Use
-
-- Running `xmake run test` for traffico from macOS or Apple Silicon
-- Verifying PRs touching BATS, CNI fixtures, Scapy packets, tc attachment, netns, veth, or eBPF programs
-- Re-running tests without rebuilding xmake packages
+The runner still needs `--privileged` because tests create network namespaces, veth pairs, tc qdiscs, and eBPF attachments.
 
 ## Quick Reference
 
@@ -26,13 +20,7 @@ Ubuntu avoids the Arch/pacman sandbox override. The container still needs `--pri
 | Run tests | `docker start -ai traffico-ubuntu-test-runner` |
 | Inspect runner | `docker ps -a --filter name=^/traffico-ubuntu-test-runner$` |
 
-## Prerequisites
-
-- Docker must be running.
-- Docker must support privileged Linux/AMD64 containers.
-- On Apple Silicon, keep `--platform linux/amd64`; BPF tooling and generated artifacts are verified through the AMD64 Linux path.
-
-## Dockerfile
+## Ubuntu Runner
 
 Create `/tmp/traffico-ubuntu-test.Dockerfile`:
 
@@ -62,11 +50,7 @@ RUN curl -fsSL https://xmake.io/shget.text | bash
 WORKDIR /workspaces/traffico
 ```
 
-Keep the extra packages even when they look redundant with CI. A clean Ubuntu image is smaller than a GitHub-hosted runner, and xmake's dependency graph needs `g++`, archive tools, `m4`, `pkg-config`, Python build prerequisites, Scapy, and `killall` from `psmisc`.
-
-## Setup
-
-From the traffico repository root:
+Build the image and create the persistent runner from the traffico repository root:
 
 ```sh
 docker build \
@@ -94,24 +78,13 @@ Run or rerun:
 docker start -ai traffico-ubuntu-test-runner
 ```
 
-The container is persistent. After success it should remain as `Exited (0)` and can be started again.
+If the runner command, image, or mount changes, remove only the named container and recreate it. Keep `traffico-ubuntu-xmake-cache` unless intentionally forcing xmake to rebuild package dependencies.
 
-## Recreate Runner
+## Arch Fallback
 
-If the command, image, or mount needs to change, remove only the named container. Keep the image and `traffico-ubuntu-xmake-cache` volume unless intentionally forcing dependency rebuilds.
+Use [arch-runner.md](arch-runner.md) only when the Ubuntu runner cannot be built or run, an existing Arch runner/cache is already available and known good, or Arch-specific package/build behavior must be reproduced.
 
-```sh
-docker rm traffico-ubuntu-test-runner
-docker create \
-  --platform linux/amd64 \
-  --privileged \
-  --name traffico-ubuntu-test-runner \
-  -v "$PWD:/workspaces/traffico" \
-  -v traffico-ubuntu-xmake-cache:/root/.xmake \
-  -w /workspaces/traffico \
-  traffico-ubuntu-test:latest \
-  bash -lc 'xmake f -c -y --generate-vmlinux=y --require-bpftool=y && xmake build -y && xmake run test'
-```
+Do not choose Arch by default just because the fallback exists.
 
 ## Common Mistakes
 
@@ -119,8 +92,5 @@ docker create \
 | --- | --- |
 | Omitting `--platform linux/amd64` | Keep it on build and create, especially on Apple Silicon. |
 | Omitting `--privileged` | Required for netns, veth, tc qdiscs, and eBPF attachment. |
-| Omitting `XMAKE_ROOT=y` | xmake refuses root execution without it. |
 | Dropping `psmisc` | `test/cli.bats` uses `killall`; without it the suite fails and can hang. |
-| Using a bare Ubuntu package set | Keep the package list above; clean Ubuntu lacks GitHub runner preinstalls. |
 | Running `bats test` directly | Use `xmake run test`. |
-| Reusing a failed cache after changing the image | Use a fresh volume or recreate the runner/cache deliberately. |
