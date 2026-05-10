@@ -49,5 +49,8 @@
         }
 
         log_out(conf, "done: loaded ${PROGNAME} at slot %d\n", slot);
+        // Keep the skeleton alive; its FDs back the prog_array entry
+        // while this process owns the chain. No-cleanup mode relies on
+        // the pinned prog_array holding the reference instead.
         break;
     }
