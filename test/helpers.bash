@@ -15,13 +15,37 @@ setsuite() {
   echo "${PREFIX%%.*}: "
 }
 
+# Return true when a crafted packet needs raw marker matching because it does
+# not expose a reliable IPv4 ID to Scapy's sniffer.
+scapy_needs_marker_match() {
+  local expect_type=0
+  local arg
+
+  for arg in "$@"; do
+    if [ "$expect_type" -eq 1 ]; then
+      case "$arg" in
+        ipv4-invalid-ihl|ethernet-truncated|qinq-inner-ipv4|non-ipv4-tcp|ipv6-tcp)
+          return 0
+          ;;
+      esac
+      expect_type=0
+      continue
+    fi
+
+    [ "$arg" = "--type" ] && expect_type=1
+  done
+
+  return 1
+}
+
 # Start a background sniffer on IFACE matching packets with IP_ID.
-# Usage: start_sniffer IFACE IP_ID [SRC_IP] [DST_IP]
+# Usage: start_sniffer IFACE IP_ID [SRC_IP] [DST_IP] [MATCH_MARKER]
 start_sniffer() {
-  local iface="$1" ip_id="$2" src_ip="${3:-}" dst_ip="${4:-}"
+  local iface="$1" ip_id="$2" src_ip="${3:-}" dst_ip="${4:-}" match_marker="${5:-}"
   local sniff_args=(--iface "$iface" --ip-id "$ip_id" --timeout "$SCAPY_SNIFF_TIMEOUT")
   [ -n "$src_ip" ] && sniff_args+=(--src-ip "$src_ip")
   [ -n "$dst_ip" ] && sniff_args+=(--dst-ip "$dst_ip")
+  [ "$match_marker" = "1" ] && sniff_args+=(--match-marker)
 
   python3 "$SCAPY_HELPER" sniff "${sniff_args[@]}" &
   SNIFFER_PID=$!
@@ -61,8 +85,10 @@ arp_prewarm() {
 assert_packet_seen() {
   local netns="$1" ip_id="$2"
   shift 2
+  local match_marker=0
+  scapy_needs_marker_match "$@" && match_marker=1
 
-  start_sniffer "$VETH" "$ip_id"
+  start_sniffer "$VETH" "$ip_id" "" "" "$match_marker"
   scapy_send "$netns" "$PEER" --ip-id "$ip_id" "$@"
   wait_sniffer
   local rc=$?
@@ -77,8 +103,10 @@ assert_packet_seen() {
 assert_packet_blocked() {
   local netns="$1" ip_id="$2"
   shift 2
+  local match_marker=0
+  scapy_needs_marker_match "$@" && match_marker=1
 
-  start_sniffer "$VETH" "$ip_id"
+  start_sniffer "$VETH" "$ip_id" "" "" "$match_marker"
   scapy_send "$netns" "$PEER" --ip-id "$ip_id" "$@"
   local rc=0
   wait "$SNIFFER_PID" || rc=$?

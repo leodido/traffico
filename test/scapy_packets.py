@@ -179,20 +179,19 @@ def cmd_sniff(args):
     """Sniff for a matching packet. Exit 0 if seen, 1 if timeout."""
     timeout = args.timeout
     ip_id = args.ip_id
+    marker = marker_for(ip_id)
 
     def match_filter(pkt):
-        if not pkt.haslayer(IP):
-            raw = bytes(pkt)
-            return marker_for(ip_id) in raw
-        ip = pkt[IP]
-        if ip.id == ip_id:
-            if args.src_ip and ip.src != args.src_ip:
-                return False
-            if args.dst_ip and ip.dst != args.dst_ip:
-                return False
-            return True
-        raw = bytes(pkt)
-        return marker_for(ip_id) in raw
+        if pkt.haslayer(IP):
+            ip = pkt[IP]
+            if ip.id == ip_id:
+                if args.src_ip and ip.src != args.src_ip:
+                    return False
+                if args.dst_ip and ip.dst != args.dst_ip:
+                    return False
+                return True
+
+        return args.match_marker and marker in bytes(pkt)
 
     result = sniff(
         iface=args.iface,
@@ -244,6 +243,8 @@ def main():
     p_sniff.add_argument("--ip-id", type=int, required=True)
     p_sniff.add_argument("--src-ip", default=None)
     p_sniff.add_argument("--dst-ip", default=None)
+    p_sniff.add_argument("--match-marker", action="store_true",
+                         help="Also match the raw payload marker for packets without a reliable IPv4 ID")
 
     args = parser.parse_args()
 
