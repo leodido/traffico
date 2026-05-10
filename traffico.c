@@ -12,7 +12,7 @@
 
 #include "api.h"
 #include "api/input_parse.h"
-#include "api/chain.h"
+#include "chain.h"
 
 const char *argp_program_version = TOOL_NAME " 0.0";
 const char *argp_program_bug_address = "https://github.com/leodido/traffico/issues";
