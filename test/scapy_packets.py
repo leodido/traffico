@@ -55,6 +55,11 @@ def ipv4_header(args, ihl=5, total_length=20, proto=6):
     )
 
 
+def ip_proto(args, default=6):
+    """Return the requested IP protocol number for raw IPv4 headers."""
+    return int(args.proto_override) if args.proto_override else default
+
+
 def build_ip_layer(args):
     """Build an IP layer with optional IP options (NOP padding to force IHL > 5)."""
     ip = IP(src=args.src_ip, dst=args.dst_ip, id=args.ip_id)
@@ -85,12 +90,21 @@ def cmd_send(args):
         )
     elif args.type == "ethernet-truncated":
         pkt = Raw(marker_for(args.ip_id))
+    elif args.type == "vlan-inner-ipv4":
+        pkt = (
+            ether(0x8100)
+            / Raw(
+                struct.pack("!HH", 0, 0x0800)
+                + ipv4_header(args, ihl=5, total_length=30, proto=ip_proto(args))
+                + marker_for(args.ip_id)
+            )
+        )
     elif args.type == "qinq-inner-ipv4":
         pkt = (
             ether(0x88A8)
             / Raw(
                 struct.pack("!HHHH", 0, 0x8100, 0, 0x0800)
-                + ipv4_header(args, ihl=5, total_length=30)
+                + ipv4_header(args, ihl=5, total_length=30, proto=ip_proto(args))
                 + marker_for(args.ip_id)
             )
         )
@@ -154,6 +168,7 @@ def cmd_send(args):
     l2_types = {
         "ipv4-invalid-ihl",
         "ethernet-truncated",
+        "vlan-inner-ipv4",
         "qinq-inner-ipv4",
         "ipv4-truncated-ihl",
         "ipv4-truncated-l4",
@@ -226,7 +241,7 @@ def main():
                         choices=["tcp", "udp", "icmp", "gre",
                                  "fragment-first", "fragment-subsequent",
                                  "ipv4-invalid-ihl", "ethernet-truncated",
-                                 "qinq-inner-ipv4",
+                                 "vlan-inner-ipv4", "qinq-inner-ipv4",
                                  "ipv4-truncated-ihl",
                                  "ipv4-truncated-l4",
                                  "ipv4-non-l4-dns-port",

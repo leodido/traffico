@@ -187,6 +187,24 @@ teardown() {
     echo "# blocked IPv4 TCP packet whose IHL extends beyond packet data" >&3
 }
 
+@test "allow_proto: drops VLAN IPv4 when inner protocol is denied" {
+    ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress allow_proto tcp >/dev/null 3>&- &
+    sleep 1
+
+    assert_packet_blocked "${NETNS}" 8002 \
+        --type vlan-inner-ipv4 --dst-ip "${VETH_ADDR}" --proto-override 1
+    echo "# blocked VLAN-tagged IPv4 ICMP packet when only TCP is allowed" >&3
+}
+
+@test "allow_proto: allows QinQ IPv4 when inner protocol is allowed" {
+    ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress allow_proto tcp >/dev/null 3>&- &
+    sleep 1
+
+    assert_packet_seen "${NETNS}" 8003 \
+        --type qinq-inner-ipv4 --dst-ip "${VETH_ADDR}" --proto-override 6
+    echo "# allowed QinQ-tagged IPv4 TCP packet" >&3
+}
+
 # --------------------------------------------------------------------------
 # block_ipv4
 # --------------------------------------------------------------------------

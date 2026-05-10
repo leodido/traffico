@@ -24,7 +24,7 @@ scapy_needs_marker_match() {
   for arg in "$@"; do
     if [ "$expect_type" -eq 1 ]; then
       case "$arg" in
-        ipv4-invalid-ihl|ethernet-truncated|qinq-inner-ipv4|non-ipv4-tcp|ipv6-tcp)
+        ipv4-invalid-ihl|ethernet-truncated|vlan-inner-ipv4|qinq-inner-ipv4|non-ipv4-tcp|ipv6-tcp)
           return 0
           ;;
       esac
