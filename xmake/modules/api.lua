@@ -1,24 +1,29 @@
 import("core.project.project")
 
--- Map program names to their input union field in struct config.
--- Programs in this table have const volatile rodata that can be
--- configured at runtime via the input union in struct config.
+-- Build and runtime metadata for every user-facing BPF program.
 --
--- Scalar programs use a plain string: "ip", "port".
--- Multi-value programs use a table: { field = "ethertypes", multi = true }.
--- The template uses PROGNAME_INPUT_FIELD for the union member name and
--- PROGNAME_IS_MULTI_VALUE to distinguish array inputs from scalars.
+-- Each entry controls:
+--   input   - rodata union field name (nil if the program takes no input)
+--   multi   - true when the input is an array (ethertypes, protos)
+--   chainable - true when the program may appear in --chain
 --
--- Programs with chainable = true get a generated case block in
--- load_chain_program() and are included in program_supports_chaining().
-local input_fields = {
-    allow_dns = { field = "ip", chainable = true },
-    allow_ethertype = { field = "ethertypes", multi = true, chainable = true },
-    allow_ipv4 = { field = "ip", chainable = true },
-    allow_port = { field = "port", chainable = true },
-    allow_proto = { field = "protos", multi = true, chainable = true },
-    block_ipv4 = "ip",
-    block_port = "port",
+-- The standalone template uses input/multi for rodata layout.
+-- The chain template uses chainable to decide which programs get a
+-- generated case in load_chain_program() and appear in
+-- program_supports_chaining().
+--
+-- Every non-internal BPF program MUST have an entry here.
+-- Missing entries cause a build failure (see _get_metadata below).
+local program_metadata = {
+    allow_dns        = { input = "ip",          multi = false, chainable = true  },
+    allow_ethertype  = { input = "ethertypes",  multi = true,  chainable = true  },
+    allow_ipv4       = { input = "ip",          multi = false, chainable = true  },
+    allow_port       = { input = "port",        multi = false, chainable = true  },
+    allow_proto      = { input = "protos",      multi = true,  chainable = true  },
+    block_ipv4       = { input = "ip",          multi = false, chainable = false },
+    block_port       = { input = "port",        multi = false, chainable = false },
+    block_private_ipv4 = {                      multi = false, chainable = false },
+    nop              = {                        multi = false, chainable = false },
 }
 
 -- Internal BPF programs that are not user-facing.
@@ -28,18 +33,16 @@ local internal_programs = {
     dispatcher = true,
 }
 
--- Normalize an input_fields entry into { field, multi, chainable }.
-local function normalize_input(raw)
-    if type(raw) == "string" then
-        return { field = raw, multi = false, chainable = false }
-    elseif type(raw) == "table" then
-        return {
-            field = raw.field,
-            multi = raw.multi or false,
-            chainable = raw.chainable or false,
-        }
+-- Look up metadata for a program, raising on missing entries.
+local function _get_metadata(progname)
+    if internal_programs[progname] then
+        return nil
     end
-    return nil
+    local meta = program_metadata[progname]
+    if not meta then
+        raise("program '%s' has no entry in program_metadata — add one to xmake/modules/api.lua", progname)
+    end
+    return meta
 end
 
 -- get sourcefiles
@@ -77,9 +80,9 @@ function gen(target, source_target)
         local tempconf = path.join(os.tmpdir(), confname)
         os.tryrm(tempconf)
         os.cp(configfile_template_path, tempconf)
-        local norm = normalize_input(input_fields[progname])
-        local input_field = norm and norm.field or nil
-        local is_multi = norm and norm.multi or false
+        local meta = _get_metadata(progname)
+        local input_field = meta and meta.input or nil
+        local is_multi = meta and meta.multi or false
         local has_rodata = input_field and 1 or 0
 
         target:add("configfiles", tempconf, {
@@ -146,7 +149,7 @@ function main(target, components_target, banner)
 end
 
 --- Generate per-program chain case fragments from chain.$progname.h.in.
---- Only programs with chainable = true in input_fields are included.
+--- Only programs with chainable = true in program_metadata are included.
 function gen_chain(target, source_target)
     if not target then
         raise("could not configure target")
@@ -160,8 +163,8 @@ function gen_chain(target, source_target)
     local programs = _get_programs(source_target)
     for _, p in ipairs(programs) do
         local progname = string.match(path.basename(p), "(.+)%..+$")
-        local norm = normalize_input(input_fields[progname])
-        if not norm or not norm.chainable then
+        local meta = _get_metadata(progname)
+        if not meta or not meta.chainable then
             goto continue
         end
 
@@ -170,7 +173,7 @@ function gen_chain(target, source_target)
         os.tryrm(tempconf)
         os.cp(configfile_template_path, tempconf)
 
-        local input_field = norm.field
+        local input_field = meta.input
         local has_rodata = input_field and 1 or 0
 
         target:add("configfiles", tempconf, {
@@ -217,7 +220,8 @@ function chain(target, components_target)
 
     v["CHAIN_SKELETON_INCLUDES"] = table.concat(includes, "\n")
     v["CHAIN_CASES"] = table.concat(cases, "\n")
-    v["CHAIN_SUPPORTS_CHECK"] = table.concat(supports, " ||\n           ")
+    v["CHAIN_SUPPORTS_CHECK"] =
+        #supports > 0 and table.concat(supports, " ||\n           ") or "false"
 
     local configfile = path.join(target:scriptdir(), "chain.h.in")
     target:add("configfiles", configfile, { variables = v })

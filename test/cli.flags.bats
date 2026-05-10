@@ -173,6 +173,20 @@ bats_require_minimum_version 1.7.0
     [ "${lines[0]}" == "traffico: program 'nop' does not support chaining" ]
 }
 
+@test "--chain rejects block programs as non-chainable" {
+    run traffico -i lo --chain "block_ipv4:127.0.0.1"
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: program 'block_ipv4' does not support chaining" ]
+
+    run traffico -i lo --chain "block_port:80"
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: program 'block_port' does not support chaining" ]
+
+    run traffico -i lo --chain "block_private_ipv4"
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: program 'block_private_ipv4' does not support chaining" ]
+}
+
 @test "--chain rejects allow_ethertype not in slot 0" {
     run traffico -i lo --chain "allow_ipv4:127.0.0.1,allow_ethertype:ipv4+arp"
     [ $status -eq 1 ]
