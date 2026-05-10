@@ -108,6 +108,34 @@ USAGE
             ]
         }
 
+DESIGN PRINCIPLES
+
+    +-----------------------------+---------------------------------------------+---------------------------------------------+
+    | Principle                   | Rule                                        | Why                                         |
+    +-----------------------------+---------------------------------------------+---------------------------------------------+
+    | Standalone vs chained       | Standalone programs are the only filter on  | Standalone programs must make the final     |
+    |                             | the interface and handle all traffic types  | decision. Chained programs trust that an    |
+    |                             | themselves. Chained programs are part of a  | upstream filter, typically allow_ethertype, |
+    |                             | pipeline and pass traffic they do not       | already constrained the traffic.            |
+    |                             | handle to the next program.                 |                                             |
+    +-----------------------------+---------------------------------------------+---------------------------------------------+
+    | Boundary failures           | block_* programs fail open on truncated     | block_* programs target specific traffic,   |
+    |                             | headers, unsupported protocols, and         | so everything else should pass. allow_*     |
+    |                             | subsequent fragments by returning           | programs define permitted traffic, so       |
+    |                             | TC_ACT_OK. allow_* programs fail closed on  | everything else should be denied.           |
+    |                             | the same failures by returning TC_ACT_SHOT. |                                             |
+    +-----------------------------+---------------------------------------------+---------------------------------------------+
+    | L2 -> L3 -> L4 ordering     | Run cheapest and broadest checks first:     | Broad L2/L3 filters reduce what later,      |
+    |                             | allow_ethertype (L2), then allow_proto      | narrower L4 programs need to inspect.       |
+    |                             | (L3), then allow_port or allow_dns (L4).    | Layered ordering also keeps each program's  |
+    |                             | allow_ipv4 fits after L2 and alongside or   | responsibility clear.                       |
+    |                             | after L3 protocol filtering.                |                                             |
+    +-----------------------------+---------------------------------------------+---------------------------------------------+
+    | Non-IPv4 passthrough in     | In chains, L3 and L4 programs pass non-IPv4 | L2 filtering is allow_ethertype's job. ARP, |
+    | chains                      | traffic to the next program via             | IPv6, and other non-IPv4 traffic allowed by |
+    |                             | tail_call_next().                           | L2 must not be silently dropped downstream. |
+    +-----------------------------+---------------------------------------------+---------------------------------------------+
+
 BUILT-IN PROGRAMS
 
     allow_dns
