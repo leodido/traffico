@@ -127,7 +127,7 @@ DESIGN PRINCIPLES
     |                       | (TC_ACT_SHOT) on the same failures because     |
     |                       | they define permitted traffic.                 |
     +-----------------------+------------------------------------------------+
-    | L2 -> L3 -> L4       | Chains run cheapest and broadest checks         |
+    | L2 -> L3 -> L4        | Chains run cheapest and broadest checks        |
     | ordering              | first: allow_ethertype (L2), then allow_proto  |
     |                       | (L3), then allow_port or allow_dns (L4).       |
     |                       | allow_ipv4 fits after L2 and alongside or      |
