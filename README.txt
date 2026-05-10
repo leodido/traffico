@@ -113,8 +113,8 @@ BUILT-IN PROGRAMS
     allow_dns
         allow_dns allows IPv4 DNS traffic (UDP/TCP port 53) to the input
         resolver address, drops the rest. Other traffic passes through.
-        Non-IPv4 traffic passes through and should be constrained by L2
-        or chain policy when needed.
+        Non-IPv4 traffic passes through unchanged in this program; put
+        allow_ethertype first in a chain when L2 filtering is required.
 
     allow_ethertype
         allow_ethertype is an L2 gatekeeper that drops Ethernet frames
@@ -129,10 +129,14 @@ BUILT-IN PROGRAMS
         outside their domain (e.g., non-IPv4 frames), which bypasses
         any downstream allow_ethertype filter.
 
+        Standalone allow_ethertype compares the outer Ethernet header
+        EtherType only; it does not unwrap VLAN tags or match the inner
+        payload EtherType.
+
         Symbolic names vlan (0x8100) and qinq (0x88A8) are available.
         VLAN TPIDs are only supported in standalone mode. In chains,
-        they are rejected because downstream L3/L4 programs cannot
-        yet parse VLAN-encapsulated payloads.
+        they are rejected because VLAN-aware parsing is not uniform
+        across downstream programs.
 
     allow_proto
         allow_proto is an L3 gatekeeper that drops IPv4 packets whose IP
@@ -157,8 +161,9 @@ BUILT-IN PROGRAMS
 
     allow_port
         allow_port allows IPv4 TCP/UDP traffic to the input destination
-        port, drops the rest. Other protocols (ICMP, etc.) pass
-        through. Non-IPv4 traffic is blocked.
+        port, drops the rest. Other IPv4 protocols (ICMP, GRE, etc.)
+        pass through. Non-IPv4 traffic and TCP/UDP subsequent fragments
+        are blocked.
 
     block_private_ipv4
         block_private_ipv4 is a program that can be used to block
