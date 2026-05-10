@@ -175,6 +175,19 @@ teardown() {
 }
 
 # --------------------------------------------------------------------------
+# allow_proto
+# --------------------------------------------------------------------------
+
+@test "allow_proto: drops packet with truncated IPv4 header" {
+    ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress allow_proto tcp >/dev/null 3>&- &
+    sleep 1
+
+    assert_packet_blocked "${NETNS}" 8001 \
+        --type ipv4-truncated-ihl --dst-ip "${VETH_ADDR}" --proto-override 6
+    echo "# blocked IPv4 TCP packet whose IHL extends beyond packet data" >&3
+}
+
+# --------------------------------------------------------------------------
 # block_ipv4
 # --------------------------------------------------------------------------
 

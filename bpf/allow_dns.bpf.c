@@ -27,8 +27,7 @@ int allow_dns(struct __sk_buff *skb)
         return TC_ACT_SHOT;
     }
 
-    // Passthrough: not IPv4 - DNS filtering doesn't apply.
-    // Non-IPv4 filtering is allow_ethertype's job.
+    // This filter parses IPv4 DNS only; other EtherTypes pass through unchanged here.
     if (eth->h_proto != bpf_htons(ETH_P_IP))
     {
         bpf_printk("allow_dns: [eth] protocol is %d: continue", eth->h_proto);
@@ -63,8 +62,7 @@ int allow_dns(struct __sk_buff *skb)
         return TC_ACT_SHOT;
     }
 
-    // Passthrough: not TCP/UDP - DNS filtering doesn't apply.
-    // Protocol filtering is allow_proto's job.
+    // Only TCP/UDP headers have the port layout checked below.
     if (ip_header->protocol != IPPROTO_TCP && ip_header->protocol != IPPROTO_UDP)
     {
         bpf_printk("allow_dns: [iph] protocol %d is not TCP/UDP: allow", ip_header->protocol);
