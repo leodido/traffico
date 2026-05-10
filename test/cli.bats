@@ -528,6 +528,20 @@ sys.exit(0)
     [ $status -eq 1 ]
 }
 
+@test "chain allow_ipv4+allow_dns allows ICMP to resolver" {
+    run ip netns exec "${NETNS}" ping -W1 -4 -c1 "${VETH_ADDR}"
+    [ $status -eq 0 ]
+    echo "# can ping ${VETH_ADDR} from the namespace" >&3
+    # allow_dns passes non-TCP/UDP through; allow_ipv4 gates the destination
+    run ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress --chain "allow_ipv4:${VETH_ADDR},allow_dns:${VETH_ADDR}" >/dev/null 3>&- &
+    sleep 1
+    run ip netns exec "${NETNS}" tc qdisc show dev "${PEER}" clsact
+    [ "$(echo $output | xargs)" == "qdisc clsact ffff: parent ffff:fff1" ]
+    run ip netns exec "${NETNS}" ping -W1 -4 -c1 "${VETH_ADDR}"
+    [ $status -eq 0 ]
+    echo "# can still ping ${VETH_ADDR} (ICMP passes through allow_dns)" >&3
+}
+
 @test "chain unsupported program prevalidation leaves no qdisc with --no-cleanup" {
     # block_ipv4 is unsupported in chain mode, so prevalidation should fail before
     # dispatcher/qdisc state is created, even when --no-cleanup is set.
