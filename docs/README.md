@@ -117,12 +117,12 @@ Here's an example CNI config file featuring `traffico-cni`.
 
 ## Design principles
 
-| Principle | Rule | Why |
-|---|---|---|
-| Standalone vs chained | Standalone programs are the only filter on the interface and handle all traffic types themselves.<br>Chained programs are part of a pipeline and pass traffic they do not handle to the next program. | Standalone programs must make the final decision.<br>Chained programs trust that an upstream filter, typically `allow_ethertype`, already constrained the traffic. |
-| Boundary failures | `block_*` programs fail open on truncated headers, unsupported protocols, and subsequent fragments by returning `TC_ACT_OK`.<br>`allow_*` programs fail closed on the same failures by returning `TC_ACT_SHOT`. | `block_*` programs target specific traffic, so everything else should pass.<br>`allow_*` programs define permitted traffic, so everything else should be denied. |
-| L2 -> L3 -> L4 ordering | Run cheapest and broadest checks first: `allow_ethertype` (L2), then `allow_proto` (L3), then `allow_port` or `allow_dns` (L4).<br>`allow_ipv4` fits after L2 and alongside or after L3 protocol filtering. | Broad L2/L3 filters reduce what later, narrower L4 programs need to inspect.<br>Layered ordering also keeps each program's responsibility clear. |
-| Non-IPv4 passthrough in chains | In chains, L3 and L4 programs pass non-IPv4 traffic to the next program via `tail_call_next()`. | L2 filtering is `allow_ethertype`'s job.<br>ARP, IPv6, and other non-IPv4 traffic allowed by L2 must not be silently dropped downstream. |
+| Principle | Description |
+|---|---|
+| Standalone vs chained | Standalone programs are the only filter on the interface and handle all traffic types themselves. Chained programs pass traffic they do not handle to the next program, trusting that an upstream filter (typically `allow_ethertype`) already constrained it. |
+| Boundary failures | `block_*` programs fail open (`TC_ACT_OK`) on truncated headers, unsupported protocols, and subsequent fragments because they target specific traffic. `allow_*` programs fail closed (`TC_ACT_SHOT`) on the same failures because they define permitted traffic. |
+| L2 → L3 → L4 ordering | Chains run cheapest and broadest checks first: `allow_ethertype` (L2), then `allow_proto` (L3), then `allow_port` or `allow_dns` (L4). `allow_ipv4` fits after L2 and alongside or after L3 protocol filtering. |
+| Non-IPv4 passthrough in chains | In chains, L3 and L4 programs pass non-IPv4 traffic to the next program via `tail_call_next()`. L2 filtering is `allow_ethertype`'s job; ARP, IPv6, and other non-IPv4 traffic allowed by L2 must not be silently dropped downstream. |
 
 ## Built-in programs
 
