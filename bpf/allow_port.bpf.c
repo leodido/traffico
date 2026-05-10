@@ -55,6 +55,7 @@ int allow_port(struct __sk_buff *skb)
     }
 
     // Only TCP/UDP headers have the port layout checked below.
+    // Keep this before fragment handling so non-TCP/UDP fragments pass through here.
     if (ip_header->protocol != IPPROTO_TCP && ip_header->protocol != IPPROTO_UDP)
     {
         bpf_printk("allow_port: [iph] protocol %d is not TCP/UDP: allow", ip_header->protocol);

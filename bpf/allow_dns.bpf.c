@@ -63,6 +63,7 @@ int allow_dns(struct __sk_buff *skb)
     }
 
     // Only TCP/UDP headers have the port layout checked below.
+    // Do not classify arbitrary non-TCP/UDP bytes as DNS ports.
     if (ip_header->protocol != IPPROTO_TCP && ip_header->protocol != IPPROTO_UDP)
     {
         bpf_printk("allow_dns: [iph] protocol %d is not TCP/UDP: allow", ip_header->protocol);
