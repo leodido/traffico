@@ -5,6 +5,7 @@ import argparse
 import socket
 import struct
 import sys
+import time
 
 from scapy.all import (
     IP,
@@ -141,11 +142,11 @@ def cmd_send(args):
         # First fragment: MF=1, offset=0, carries L4 header
         ip.flags = "MF"
         ip.frag = 0
-        pkt = ip / TCP(sport=args.src_port, dport=args.dst_port) / Raw(b"X" * 20)
+        pkt = Ether(dst="ff:ff:ff:ff:ff:ff") / ip / TCP(sport=args.src_port, dport=args.dst_port) / Raw(b"X" * 20)
     elif args.type == "fragment-subsequent":
         # Subsequent fragment: offset > 0, no L4 header
         ip.frag = args.frag_offset if args.frag_offset else 10
-        pkt = ip / Raw(b"X" * 20)
+        pkt = Ether(dst="ff:ff:ff:ff:ff:ff") / ip / Raw(b"X" * 20)
     else:
         print(f"unknown packet type: {args.type}", file=sys.stderr)
         sys.exit(2)
@@ -159,20 +160,27 @@ def cmd_send(args):
         "ipv4-non-l4-dns-port",
         "non-ipv4-tcp",
         "ipv6-tcp",
+        "fragment-first",
+        "fragment-subsequent",
     }
 
-    try:
-        if args.type in l2_types:
-            scapy_sendp(pkt, iface=args.iface, verbose=False)
-        else:
-            # Use L3 send: the kernel adds the Ethernet header and routes
-            # through the default gateway. The packet hits TC egress on its
-            # way out, which is where the BPF program is attached.
-            scapy_send(pkt, verbose=False)
-    except OSError:
-        # ENOBUFFS / ENETUNREACH is expected when the BPF program
-        # drops the packet at TC egress. The sniffer judges the result.
-        pass
+    for attempt in range(3):
+        try:
+            if args.type in l2_types:
+                scapy_sendp(pkt, iface=args.iface, verbose=False)
+            else:
+                # Use L3 send: the kernel adds the Ethernet header and routes
+                # through the default gateway. The packet hits TC egress on its
+                # way out, which is where the BPF program is attached.
+                scapy_send(pkt, verbose=False)
+            break
+        except OSError as e:
+            if e.errno == 105 and attempt < 2:  # ENOBUFS
+                time.sleep(0.2)
+                continue
+            # ENETUNREACH is expected when the BPF program drops the
+            # packet at TC egress. The sniffer judges the result.
+            break
 
 
 def cmd_sniff(args):
