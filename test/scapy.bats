@@ -60,13 +60,13 @@ teardown() {
     echo "# blocked IPv4 packet whose IHL extends beyond packet data" >&3
 }
 
-@test "allow_ipv4: allows non-IPv4 EtherType" {
+@test "allow_ipv4: drops non-IPv4 EtherType in standalone mode" {
     ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress allow_ipv4 "${VETH_ADDR}" >/dev/null 3>&- &
     sleep 1
 
-    assert_packet_seen "${NETNS}" 4003 \
+    assert_packet_blocked "${NETNS}" 4003 \
         --type ipv6-tcp --dst-port 8787
-    echo "# allowed IPv6 TCP packet through IPv4-only allowlist" >&3
+    echo "# blocked IPv6 TCP packet in standalone IPv4 allowlist" >&3
 }
 
 # --------------------------------------------------------------------------
@@ -113,13 +113,13 @@ teardown() {
 # allow_dns
 # --------------------------------------------------------------------------
 
-@test "allow_dns: allows non-IPv4 EtherType" {
+@test "allow_dns: drops non-IPv4 EtherType in standalone mode" {
     ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress allow_dns "${VETH_ADDR}" >/dev/null 3>&- &
     sleep 1
 
-    assert_packet_seen "${NETNS}" 6001 \
+    assert_packet_blocked "${NETNS}" 6001 \
         --type non-ipv4-tcp --dst-ip "${VETH_ADDR}" --dst-port 53
-    echo "# allowed non-IPv4 EtherType carrying DNS-like payload" >&3
+    echo "# blocked non-IPv4 EtherType carrying DNS-like payload in standalone mode" >&3
 }
 
 @test "allow_dns: drops packet with truncated L4 header" {
@@ -187,6 +187,15 @@ teardown() {
     echo "# blocked IPv4 TCP packet whose IHL extends beyond packet data" >&3
 }
 
+@test "allow_proto: drops VLAN-wrapped non-IPv4 in standalone mode" {
+    ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress allow_proto tcp >/dev/null 3>&- &
+    sleep 1
+
+    assert_packet_blocked "${NETNS}" 8004 \
+        --type vlan-inner-ipv6 --dst-ip "${VETH_ADDR}"
+    echo "# blocked VLAN frame whose inner EtherType is non-IPv4 in standalone mode" >&3
+}
+
 @test "allow_proto: drops VLAN IPv4 when inner protocol is denied" {
     ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress allow_proto tcp >/dev/null 3>&- &
     sleep 1
@@ -203,6 +212,37 @@ teardown() {
     assert_packet_seen "${NETNS}" 8003 \
         --type qinq-inner-ipv4 --dst-ip "${VETH_ADDR}" --proto-override 6
     echo "# allowed QinQ-tagged IPv4 TCP packet" >&3
+}
+
+# --------------------------------------------------------------------------
+# chains
+# --------------------------------------------------------------------------
+
+@test "chain allow_ethertype+allow_port allows ARP" {
+    ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress --chain "allow_ethertype:ipv4+arp,allow_port:443" >/dev/null 3>&- &
+    sleep 1
+
+    assert_packet_seen "${NETNS}" 9001 \
+        --type arp-request --src-ip "${PEER_ADDR}" --dst-ip "${VETH_ADDR}"
+    echo "# observed explicit ARP request through L2 -> L4 chain" >&3
+}
+
+@test "chain allow_ethertype+allow_ipv4 passes IPv6 to next stage" {
+    ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress --chain "allow_ethertype:ipv6,allow_ipv4:${VETH_ADDR}" >/dev/null 3>&- &
+    sleep 1
+
+    assert_packet_seen "${NETNS}" 9002 \
+        --type ipv6-tcp --dst-port 8787
+    echo "# observed IPv6 through chained L3 IPv4 allowlist" >&3
+}
+
+@test "chain allow_ethertype+allow_port passes IPv6 to next stage" {
+    ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress --chain "allow_ethertype:ipv6,allow_port:8787" >/dev/null 3>&- &
+    sleep 1
+
+    assert_packet_seen "${NETNS}" 9003 \
+        --type ipv6-tcp --dst-port 8787
+    echo "# observed IPv6 through chained L4 port allowlist" >&3
 }
 
 # --------------------------------------------------------------------------
