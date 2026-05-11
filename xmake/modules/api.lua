@@ -3,27 +3,33 @@ import("core.project.project")
 -- Build and runtime metadata for every user-facing BPF program.
 --
 -- Each entry controls:
---   input   - rodata union field name (nil if the program takes no input)
---   multi   - true when the input is an array (ethertypes, protos)
+--   input     - userspace config/chain input field (nil if the program takes no input)
+--   multi     - true when the input is an array (ethertypes, protos)
 --   chainable - true when the program may appear in --chain
+--   layer     - l2/l3/l4 for chainable programs
 --
 -- The standalone template uses input/multi for rodata layout.
 -- The chain template uses chainable to decide which programs get a
 -- generated case in load_chain_program() and appear in
--- program_supports_chaining().
+-- program_supports_chaining(). The chain validator uses layer to
+-- enforce L2 -> L3 -> L4 composition.
 --
 -- Every non-internal BPF program MUST have an entry here.
 -- Missing entries cause a build failure (see _get_metadata below).
 local program_metadata = {
-    allow_dns        = { input = "ip",          multi = false, chainable = true  },
-    allow_ethertype  = { input = "ethertypes",  multi = true,  chainable = true  },
-    allow_ipv4       = { input = "ip",          multi = false, chainable = true  },
-    allow_port       = { input = "port",        multi = false, chainable = true  },
-    allow_proto      = { input = "protos",      multi = true,  chainable = true  },
+    allow_dns        = { input = "ip",          multi = false, chainable = true,  layer = "l4" },
+    allow_ethertype  = { input = "ethertypes",  multi = true,  chainable = true,  layer = "l2" },
+    allow_ipv4       = { input = "ip",          multi = false, chainable = true,  layer = "l3" },
+    allow_port       = { input = "port",        multi = false, chainable = true,  layer = "l4" },
+    allow_proto      = { input = "protos",      multi = true,  chainable = true,  layer = "l3" },
     block_ipv4       = { input = "ip",          multi = false, chainable = false },
     block_port       = { input = "port",        multi = false, chainable = false },
-    block_private_ipv4 = {                      multi = false, chainable = false },
-    nop              = {                        multi = false, chainable = false },
+    block_private_ipv4 = {
+        multi = false, chainable = false,
+    },
+    nop = {
+        multi = false, chainable = false,
+    },
 }
 
 -- Internal BPF programs that are not user-facing.
@@ -53,10 +59,23 @@ local function _get_metadata(progname)
     if meta.multi ~= nil and type(meta.multi) ~= "boolean" then
         raise("program '%s' metadata multi must be true or false", progname)
     end
+    local multi = meta.multi or false
+    local valid_layers = { l2 = true, l3 = true, l4 = true }
+    if meta.chainable then
+        if type(meta.layer) ~= "string" then
+            raise("program '%s' with chainable = true must declare layer in program_metadata", progname)
+        end
+        if not valid_layers[meta.layer] then
+            raise("program '%s' metadata layer must be one of l2, l3, or l4", progname)
+        end
+    elseif meta.layer ~= nil and not valid_layers[meta.layer] then
+        raise("program '%s' metadata layer must be one of l2, l3, or l4", progname)
+    end
     return {
         input = meta.input,
-        multi = meta.multi or false,
+        multi = multi,
         chainable = meta.chainable,
+        layer = meta.layer,
     }
 end
 
@@ -196,6 +215,7 @@ function gen_chain(target, source_target)
                 PROGNAME = progname,
                 PROGNAME_WITH_RODATA = has_rodata,
                 PROGNAME_INPUT_FIELD = input_field or "",
+                PROGNAME_CHAIN_LAYER = meta.layer,
             }
         })
 
@@ -222,19 +242,24 @@ function chain(target, components_target)
     local includes = {}
     local cases = {}
     local supports = {}
+    local layers = {}
 
     for i, pv in ipairs(vars) do
         local progname = pv.variables.PROGNAME
+        local layer = pv.variables.PROGNAME_CHAIN_LAYER
         table.insert(includes, '#include "' .. progname .. '.skel.h"')
         table.insert(cases, io.readfile(components[i]))
         table.insert(supports, "program == program_" .. progname)
+        table.insert(layers, "case program_" .. progname .. ": return CHAIN_LAYER_" .. string.upper(layer) .. ";")
     end
 
     table.sort(includes)
     table.sort(supports)
+    table.sort(layers)
 
     v["CHAIN_SKELETON_INCLUDES"] = table.concat(includes, "\n")
     v["CHAIN_CASES"] = table.concat(cases, "\n")
+    v["CHAIN_LAYER_CASES"] = table.concat(layers, "\n    ")
     v["CHAIN_SUPPORTS_CHECK"] =
         #supports > 0 and table.concat(supports, " ||\n           ") or "false"
 
