@@ -151,6 +151,7 @@ s.close()
 " &
     DNS_PID=$!
     sleep 0.5
+    arp_prewarm "${NETNS}"
     run ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress allow_dns "${VETH_ADDR}" >/dev/null 3>&- &
     sleep 1
     run ip netns exec "${NETNS}" tc qdisc show dev "${PEER}" clsact
@@ -179,6 +180,7 @@ s.close()
 " &
     DNS_PID=$!
     sleep 0.5
+    arp_prewarm "${NETNS}"
     # Allow DNS only to PEER_ADDR (not VETH_ADDR where the server is)
     run ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress allow_dns "${PEER_ADDR}" >/dev/null 3>&- &
     sleep 1
@@ -206,6 +208,7 @@ s.close()
 " &
     DNS_PID=$!
     sleep 0.5
+    arp_prewarm "${NETNS}"
     run ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress allow_dns "${VETH_ADDR}" >/dev/null 3>&- &
     sleep 1
     run ip netns exec "${NETNS}" tc qdisc show dev "${PEER}" clsact
@@ -242,6 +245,7 @@ s.close()
 " &
     DNS_PID=$!
     sleep 0.5
+    arp_prewarm "${NETNS}"
     # Allow DNS only to PEER_ADDR (not VETH_ADDR where the server is)
     run ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress allow_dns "${PEER_ADDR}" >/dev/null 3>&- &
     sleep 1
