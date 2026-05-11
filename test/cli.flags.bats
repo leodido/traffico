@@ -187,10 +187,26 @@ bats_require_minimum_version 1.7.0
     [ "${lines[0]}" == "traffico: program 'block_private_ipv4' does not support chaining" ]
 }
 
-@test "--chain rejects allow_ethertype not in slot 0" {
-    run traffico -i lo --chain "allow_ipv4:127.0.0.1,allow_ethertype:ipv4+arp"
+@test "--chain rejects allow_ethertype after L3/L4" {
+    run timeout 2 traffico -i lo --chain "allow_ipv4:127.0.0.1,allow_ethertype:ipv4+arp"
     [ $status -eq 1 ]
-    [ "${lines[0]}" == "traffico: program 'allow_ethertype' must be first in a chain" ]
+    [[ "$output" == *"L3/L4 chains must start with allow_ethertype"* ]]
+}
+
+@test "--chain rejects L3/L4 chain without allow_ethertype gate" {
+    run timeout 2 traffico -i lo --chain "allow_port:443"
+    [ $status -eq 1 ]
+    [[ "$output" == *"L3/L4 chains must start with allow_ethertype"* ]]
+
+    run timeout 2 traffico -i lo --chain "allow_ipv4:127.0.0.1,allow_port:443"
+    [ $status -eq 1 ]
+    [[ "$output" == *"L3/L4 chains must start with allow_ethertype"* ]]
+}
+
+@test "--chain rejects layer regression" {
+    run timeout 2 traffico -i lo --chain "allow_ethertype:ipv4+arp,allow_port:443,allow_ipv4:127.0.0.1"
+    [ $status -eq 1 ]
+    [[ "$output" == *"chain order must be L2 -> L3 -> L4"* ]]
 }
 
 @test "--chain rejects VLAN TPIDs in multi-program chain" {
