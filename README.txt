@@ -144,10 +144,10 @@ DESIGN PRINCIPLES
 BUILT-IN PROGRAMS
 
     allow_dns
-        allow_dns allows IPv4 DNS traffic (UDP/TCP port 53) to the input
-        resolver address, drops the rest. Other traffic passes through.
-        Non-IPv4 traffic passes through unchanged in this program; put
-        allow_ethertype first in a chain when L2 filtering is required.
+        allow_dns allows IPv4 DNS traffic (TCP/UDP port 53) to the
+        input resolver address. Other IPv4 traffic passes through.
+        Standalone mode blocks non-IPv4 traffic. Chain mode passes
+        non-IPv4 traffic to the next stage.
 
     allow_ethertype
         allow_ethertype is an L2 gatekeeper that drops Ethernet frames
@@ -157,10 +157,10 @@ BUILT-IN PROGRAMS
         supported.
         Example: allow_ethertype ipv4+arp
 
-        In a chain, allow_ethertype must be the first program. L3+
-        programs (allow_ipv4, allow_port, etc.) pass through traffic
-        outside their domain (e.g., non-IPv4 frames), which bypasses
-        any downstream allow_ethertype filter.
+        If a chain contains any L3/L4 program, allow_ethertype must be
+        first. Chain order must be non-decreasing by layer:
+        L2 -> L3 -> L4. Same-layer programs are allowed, and chains may
+        skip L3 after the L2 gate.
 
         Standalone allow_ethertype compares the outer Ethernet header
         EtherType only; it does not unwrap VLAN tags or match the inner
@@ -173,29 +173,28 @@ BUILT-IN PROGRAMS
 
     allow_proto
         allow_proto is an L3 gatekeeper that drops IPv4 packets whose IP
-        protocol is not in the allowed set. Non-IPv4 traffic passes
-        through (L2 filtering is allow_ethertype's job). Multiple
-        protocols can be specified by joining them with +. Symbolic
-        names (tcp, udp, icmp, sctp) and decimal numbers (6, 17) are
-        both supported.
+        protocol is not in the allowed set. Multiple protocols can be
+        specified by joining them with +. Symbolic names (tcp, udp,
+        icmp, sctp) and decimal numbers (6, 17) are both supported.
         Example: allow_proto tcp+udp
 
-        In a chain, allow_proto should be placed after allow_ethertype
-        and before allow_port (L2 -> L3 -> L4 ordering).
         VLAN/QinQ-tagged IPv4 is unwrapped before checking the IP
         protocol; truncated VLAN headers and unsupported additional
-        VLAN nesting fail closed.
+        VLAN nesting fail closed. Standalone mode blocks non-IPv4
+        traffic after VLAN unwrap. Chain mode passes non-IPv4 traffic to
+        the next stage.
 
     allow_ipv4
-        allow_ipv4 allows IPv4 traffic to the input address, drops the
-        rest. Non-IPv4 traffic passes through and should be constrained
-        by L2 or chain policy when needed. Localhost (127.0.0.0/8)
-        traffic is always allowed.
+        allow_ipv4 allows IPv4 traffic to the input address, drops other
+        IPv4 destinations, and always allows localhost (127.0.0.0/8).
+        Standalone mode blocks non-IPv4 traffic. Chain mode passes
+        non-IPv4 traffic to the next stage.
 
     allow_port
         allow_port allows IPv4 TCP/UDP traffic to the input destination
-        port, drops the rest. Other IPv4 protocols (ICMP, GRE, etc.)
-        pass through. Non-IPv4 traffic and TCP/UDP subsequent fragments
+        port. Other IPv4 protocols (ICMP, GRE, etc.) pass through.
+        Standalone mode blocks non-IPv4 traffic. Chain mode passes
+        non-IPv4 traffic to the next stage. TCP/UDP subsequent fragments
         are blocked.
 
     block_private_ipv4
