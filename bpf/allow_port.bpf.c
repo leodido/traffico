@@ -26,10 +26,15 @@ int allow_port(struct __sk_buff *skb)
         return TC_ACT_SHOT;
     }
 
-    // Fail closed for unsupported L3. IPv6 TCP/UDP has destination ports too,
-    // and passing it here would bypass this L4 allowlist.
     if (eth->h_proto != bpf_htons(ETH_P_IP))
     {
+        if (chained)
+        {
+            bpf_printk("allow_port: [eth] protocol is %d: continue", eth->h_proto);
+            tail_call_next(skb, slot);
+            return TC_ACT_OK;
+        }
+
         bpf_printk("allow_port: [eth] unsupported ethertype %d: block", eth->h_proto);
         return TC_ACT_SHOT;
     }

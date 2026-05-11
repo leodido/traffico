@@ -28,9 +28,15 @@ int allow_ipv4(struct __sk_buff *skb)
 
     if (eth->h_proto != bpf_htons(ETH_P_IP))
     {
-        bpf_printk("allow_ipv4: [eth] protocol is %d: continue", eth->h_proto);
-        tail_call_next(skb, slot);
-        return TC_ACT_OK;
+        if (chained)
+        {
+            bpf_printk("allow_ipv4: [eth] protocol is %d: continue", eth->h_proto);
+            tail_call_next(skb, slot);
+            return TC_ACT_OK;
+        }
+
+        bpf_printk("allow_ipv4: [eth] unsupported ethertype %d: block", eth->h_proto);
+        return TC_ACT_SHOT;
     }
 
     struct iphdr *ip_header = data + l3_offset;
