@@ -501,7 +501,7 @@ sys.exit(0)
     echo "# cannot ping ${VETH_ADDR} (chain blocks wrong IP)" >&3
 }
 
-@test "chain allow_ethertype+allow_ipv4+allow_port blocks non-matching port" {
+@test "chain allow_ethertype+allow_ipv4+allow_port reaches later port gate" {
     new_server
     run ip netns exec "${NETNS}" curl --max-time 1 --silent "${VETH_ADDR}:${SERVER_PORT}" >/dev/null
     [ $status -eq 0 ]
@@ -513,7 +513,7 @@ sys.exit(0)
     [ "$(echo $output | xargs)" == "qdisc clsact ffff: parent ffff:fff1" ]
     run ip netns exec "${NETNS}" curl --max-time 1 --silent "${VETH_ADDR}:${SERVER_PORT}" >/dev/null
     [ ! $status -eq 0 ]
-    echo "# cannot reach ${VETH_ADDR}:${SERVER_PORT} (chain blocks wrong port)" >&3
+    echo "# cannot reach ${VETH_ADDR}:${SERVER_PORT} (later L4 gate blocks wrong port)" >&3
 }
 
 @test "chain allow_ethertype+allow_ipv4+allow_dns allows ICMP to resolver" {
