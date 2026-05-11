@@ -120,6 +120,78 @@ static inline bool program_supports_chaining(program_t program)
     return ${CHAIN_SUPPORTS_CHECK};
 }
 
+static int validate_chain_entries(struct chain_entry *entries, int chain_len,
+                                  const char **err_msg, program_t *err_program)
+{
+    if (err_msg)
+        *err_msg = NULL;
+    if (err_program)
+        *err_program = (program_t)NUM_PROGRAMS;
+
+    if (chain_len < 1 || chain_len > MAX_CHAIN_LEN)
+    {
+        if (err_msg)
+            *err_msg = "chain length out of range";
+        return 1;
+    }
+
+    bool has_l3_l4 = false;
+
+    for (int i = 0; i < chain_len; i++)
+    {
+        if (!program_supports_chaining(entries[i].program))
+        {
+            if (err_msg)
+                *err_msg = "program does not support chaining";
+            if (err_program)
+                *err_program = entries[i].program;
+            return 1;
+        }
+
+        enum chain_layer layer = program_chain_layer(entries[i].program);
+        if (layer >= CHAIN_LAYER_L3)
+            has_l3_l4 = true;
+    }
+
+    if (has_l3_l4 && entries[0].program != program_allow_ethertype)
+    {
+        if (err_msg)
+            *err_msg = "L3/L4 chains must start with allow_ethertype";
+        return 1;
+    }
+
+    enum chain_layer previous_layer = CHAIN_LAYER_NONE;
+    for (int i = 0; i < chain_len; i++)
+    {
+        enum chain_layer layer = program_chain_layer(entries[i].program);
+        if (previous_layer != CHAIN_LAYER_NONE &&
+            layer != CHAIN_LAYER_NONE &&
+            layer < previous_layer)
+        {
+            if (err_msg)
+                *err_msg = "chain order must be L2 -> L3 -> L4";
+            return 1;
+        }
+
+        if (layer != CHAIN_LAYER_NONE)
+            previous_layer = layer;
+    }
+
+    for (int i = 0; i < chain_len; i++)
+    {
+        if (entries[i].program == program_allow_ethertype &&
+            chain_len > 1 &&
+            chain_entry_has_vlan_tpid(&entries[i]))
+        {
+            if (err_msg)
+                *err_msg = "VLAN EtherTypes in allow_ethertype chains require VLAN-aware L3/L4 parsing";
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
 /// Attach a chain of programs using the dispatcher + tail calls.
 ///
 /// 1. Validate all chain entries before touching TC
@@ -138,61 +210,26 @@ int attach_chain(struct config *conf,
     char buf[100];
     buf[sizeof(buf) - 1] = '\0';
 
-    if (chain_len < 1 || chain_len > MAX_CHAIN_LEN)
-    {
-        log_err(conf, "fail: chain length %d out of range [1, %d]\n",
-                chain_len, MAX_CHAIN_LEN);
-        return 1;
-    }
-
     // 1. Validate all chain entries before attaching anything.
-    bool has_l3_l4 = false;
-
-    for (int i = 0; i < chain_len; i++)
+    const char *validation_err = NULL;
+    program_t validation_program = (program_t)NUM_PROGRAMS;
+    if (validate_chain_entries(entries, chain_len, &validation_err, &validation_program) != 0)
     {
-        if (!program_supports_chaining(entries[i].program))
+        if (validation_program != (program_t)NUM_PROGRAMS)
         {
             log_err(conf, "fail: program '%s' does not support chaining\n",
-                    g_programs_name[entries[i].program]);
-            return 1;
+                    g_programs_name[validation_program]);
         }
-
-        enum chain_layer layer = program_chain_layer(entries[i].program);
-        if (layer >= CHAIN_LAYER_L3)
-            has_l3_l4 = true;
-    }
-
-    if (has_l3_l4 && entries[0].program != program_allow_ethertype)
-    {
-        log_err(conf, "fail: L3/L4 chains must start with allow_ethertype\n");
+        else if (validation_err && strcmp(validation_err, "chain length out of range") == 0)
+        {
+            log_err(conf, "fail: chain length %d out of range [1, %d]\n",
+                    chain_len, MAX_CHAIN_LEN);
+        }
+        else
+        {
+            log_err(conf, "fail: %s\n", validation_err);
+        }
         return 1;
-    }
-
-    enum chain_layer previous_layer = CHAIN_LAYER_NONE;
-    for (int i = 0; i < chain_len; i++)
-    {
-        enum chain_layer layer = program_chain_layer(entries[i].program);
-        if (previous_layer != CHAIN_LAYER_NONE &&
-            layer != CHAIN_LAYER_NONE &&
-            layer < previous_layer)
-        {
-            log_err(conf, "fail: chain order must be L2 -> L3 -> L4\n");
-            return 1;
-        }
-
-        if (layer != CHAIN_LAYER_NONE)
-            previous_layer = layer;
-    }
-
-    for (int i = 0; i < chain_len; i++)
-    {
-        if (entries[i].program == program_allow_ethertype &&
-            chain_len > 1 &&
-            chain_entry_has_vlan_tpid(&entries[i]))
-        {
-            log_err(conf, "fail: VLAN EtherTypes in allow_ethertype chains require VLAN-aware L3/L4 parsing\n");
-            return 1;
-        }
     }
 
     // 2. Load the dispatcher and populate its prog_array before replacing
