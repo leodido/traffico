@@ -14,6 +14,7 @@ struct traffico_vlan_hdr
 const volatile __u8 allowed[MAX_MULTI_VALUES] = {};
 const volatile __u8 num_allowed = 0;
 const volatile __u32 slot = 0; // position in the chain (set by userspace)
+const volatile __u8 chained = 0; // true when loaded as one stage in a chain
 
 DEFINE_PROG_ARRAY();
 

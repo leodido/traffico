@@ -7,6 +7,7 @@ char LICENSE[] SEC("license") = "Dual BSD/GPL";
 
 const volatile __u32 input = 0; // address to allow (host byte order)
 const volatile __u32 slot = 0;  // position in the chain (set by userspace)
+const volatile __u8 chained = 0; // true when loaded as one stage in a chain
 
 DEFINE_PROG_ARRAY();
 

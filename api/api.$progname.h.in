@@ -15,62 +15,7 @@ int ${OPERATION}${PROGNAME}(struct config *conf, after_attach_fn_t cb)
         return 1;
     }
 
-    // Set read-only data (between open and load).
-    // Copies the input field struct at offset 0 in .rodata. This covers
-    // both single-value inputs (e.g., a __u32 IP) and multi-value inputs
-    // (e.g., ethertypes: __u16[8] + __u8 count). Additional globals like
-    // `slot` (used for chain support) are not set here — they default to
-    // zero from calloc, which is correct for standalone mode.
-#if ${PROGNAME_WITH_RODATA}
-    if (conf->has_input)
-    {
-        struct bpf_map *rodata_map = obj->maps.rodata;
-        if (!rodata_map)
-        {
-            log_err(conf, "fail: .rodata map not found in skeleton\n");
-            goto destroy_${PROGNAME};
-        }
-        size_t rodata_sz = bpf_map__value_size(rodata_map);
-        void *rodata_buf = calloc(1, rodata_sz);
-        if (!rodata_buf)
-        {
-            log_err(conf, "fail: allocating rodata buffer\n");
-            goto destroy_${PROGNAME};
-        }
-#if ${PROGNAME_IS_MULTI_VALUE}
-        size_t input_sz = sizeof(conf->input.${PROGNAME_INPUT_FIELD}.values) +
-                          sizeof(conf->input.${PROGNAME_INPUT_FIELD}.count);
-#else
-        size_t input_sz = sizeof(conf->input.${PROGNAME_INPUT_FIELD});
-#endif
-        if (input_sz > rodata_sz)
-        {
-            log_err(conf, "fail: rodata map too small for input\n");
-            free(rodata_buf);
-            err = 1;
-            goto destroy_${PROGNAME};
-        }
-
-#if ${PROGNAME_IS_MULTI_VALUE}
-        memcpy(rodata_buf,
-               conf->input.${PROGNAME_INPUT_FIELD}.values,
-               sizeof(conf->input.${PROGNAME_INPUT_FIELD}.values));
-        memcpy((char *)rodata_buf + sizeof(conf->input.${PROGNAME_INPUT_FIELD}.values),
-               &conf->input.${PROGNAME_INPUT_FIELD}.count,
-               sizeof(conf->input.${PROGNAME_INPUT_FIELD}.count));
-#else
-        memcpy(rodata_buf, &conf->input.${PROGNAME_INPUT_FIELD}, sizeof(conf->input.${PROGNAME_INPUT_FIELD}));
-#endif
-        err = bpf_map__set_initial_value(rodata_map, rodata_buf, rodata_sz);
-        free(rodata_buf);
-        if (err)
-        {
-            log_err(conf, "fail: setting .rodata map\n");
-            goto destroy_${PROGNAME};
-        }
-        log_out(conf, "done: setting rodata input\n");
-    }
-#endif
+${PROGNAME_RODATA_ASSIGNMENT}
 
     err = ${PROGNAME}_bpf__load(obj);
     if (err)

@@ -91,39 +91,6 @@ static int ensure_dir(const char *dir)
     return mkdir(tmp, 0755) == 0 || errno == EEXIST ? 0 : -errno;
 }
 
-/// Set rodata for a program's skeleton map.
-/// Writes the input value at offset 0 and the slot index at the
-/// appropriate offset in the rodata buffer.
-static int set_chain_rodata(struct bpf_map *rodata_map,
-                            const void *input_val, size_t input_sz,
-                            __u32 slot)
-{
-    if (!rodata_map)
-        return -EINVAL;
-
-    size_t rodata_sz = bpf_map__value_size(rodata_map);
-
-    // Validate that the input fits in the rodata map
-    if (input_sz > rodata_sz)
-        return -ENOSPC;
-
-    size_t slot_offset = (input_sz + 3) & ~3;
-    if (slot_offset + sizeof(__u32) > rodata_sz)
-        return -ENOSPC;
-
-    void *buf = calloc(1, rodata_sz);
-    if (!buf)
-        return -ENOMEM;
-
-    // Layout: input at offset 0, slot at offset aligned to 4 bytes after input
-    memcpy(buf, input_val, input_sz);
-    memcpy((char *)buf + slot_offset, &slot, sizeof(slot));
-
-    int err = bpf_map__set_initial_value(rodata_map, buf, rodata_sz);
-    free(buf);
-    return err;
-}
-
 /// Load a chain program, set its rodata, reuse the dispatcher's prog_array,
 /// and insert it into the prog_array at the given slot.
 static int load_chain_program(struct config *conf,
