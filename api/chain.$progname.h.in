@@ -15,20 +15,10 @@
             return 1;
         }
 
-#if ${PROGNAME_WITH_RODATA}
-        if (entry->has_input)
-        {
-            err = set_chain_rodata(obj->maps.rodata,
-                                   &entry->input.${PROGNAME_INPUT_FIELD}, sizeof(entry->input.${PROGNAME_INPUT_FIELD}),
-                                   slot);
-            if (err)
-            {
-                log_err(conf, "fail: setting rodata for ${PROGNAME}\n");
-                ${PROGNAME}_bpf__destroy(obj);
-                return 1;
-            }
-        }
-#endif
+${PROGNAME_CHAIN_INPUT_ASSIGNMENT}
+
+        obj->rodata->slot = slot;
+        obj->rodata->chained = 1;
 
         err = ${PROGNAME}_bpf__load(obj);
         if (err)

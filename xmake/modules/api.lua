@@ -4,11 +4,13 @@ import("core.project.project")
 --
 -- Each entry controls:
 --   input     - userspace config/chain input field (nil if the program takes no input)
+--   bpf_value - BPF rodata value field for programs with input
+--   bpf_count - BPF rodata count field for multi-value programs
 --   multi     - true when the input is an array (ethertypes, protos)
 --   chainable - true when the program may appear in --chain
 --   layer     - l2/l3/l4 for chainable programs
 --
--- The standalone template uses input/multi for rodata layout.
+-- The standalone template uses input/multi/bpf_* for typed rodata writes.
 -- The chain template uses chainable to decide which programs get a
 -- generated case in load_chain_program() and appear in
 -- program_supports_chaining(). The chain validator uses layer to
@@ -17,13 +19,34 @@ import("core.project.project")
 -- Every non-internal BPF program MUST have an entry here.
 -- Missing entries cause a build failure (see _get_metadata below).
 local program_metadata = {
-    allow_dns        = { input = "ip",          multi = false, chainable = true,  layer = "l4" },
-    allow_ethertype  = { input = "ethertypes",  multi = true,  chainable = true,  layer = "l2" },
-    allow_ipv4       = { input = "ip",          multi = false, chainable = true,  layer = "l3" },
-    allow_port       = { input = "port",        multi = false, chainable = true,  layer = "l4" },
-    allow_proto      = { input = "protos",      multi = true,  chainable = true,  layer = "l3" },
-    block_ipv4       = { input = "ip",          multi = false, chainable = false },
-    block_port       = { input = "port",        multi = false, chainable = false },
+    allow_dns = {
+        input = "ip", bpf_value = "input",
+        multi = false, chainable = true, layer = "l4",
+    },
+    allow_ethertype = {
+        input = "ethertypes", bpf_value = "allowed", bpf_count = "num_allowed",
+        multi = true, chainable = true, layer = "l2",
+    },
+    allow_ipv4 = {
+        input = "ip", bpf_value = "input",
+        multi = false, chainable = true, layer = "l3",
+    },
+    allow_port = {
+        input = "port", bpf_value = "input",
+        multi = false, chainable = true, layer = "l4",
+    },
+    allow_proto = {
+        input = "protos", bpf_value = "allowed", bpf_count = "num_allowed",
+        multi = true, chainable = true, layer = "l3",
+    },
+    block_ipv4 = {
+        input = "ip", bpf_value = "input",
+        multi = false, chainable = false,
+    },
+    block_port = {
+        input = "port", bpf_value = "input",
+        multi = false, chainable = false,
+    },
     block_private_ipv4 = {
         multi = false, chainable = false,
     },
@@ -38,6 +61,32 @@ local program_metadata = {
 local internal_programs = {
     dispatcher = true,
 }
+
+local config_input_fields = {
+    ethertypes = true,
+    ip = true,
+    port = true,
+    protos = true,
+}
+
+local reserved_bpf_rodata_fields = {
+    chained = true,
+    slot = true,
+}
+
+local function _is_c_identifier(value)
+    return type(value) == "string" and value:match("^[A-Za-z_][A-Za-z0-9_]*$") ~= nil
+end
+
+local function _validate_bpf_field(progname, field_name, field_value)
+    if not _is_c_identifier(field_value) then
+        raise("program '%s' metadata %s must be a non-empty C identifier", progname, field_name)
+    end
+    if reserved_bpf_rodata_fields[field_value] then
+        raise("program '%s' metadata %s must not use reserved rodata field '%s'",
+              progname, field_name, field_value)
+    end
+end
 
 -- Look up and validate metadata for a program.
 -- Raises on missing entries or invalid field types so that omitting
@@ -56,11 +105,38 @@ local function _get_metadata(progname)
     if meta.input ~= nil and type(meta.input) ~= "string" then
         raise("program '%s' metadata input must be a string or nil", progname)
     end
+    if meta.input ~= nil and not config_input_fields[meta.input] then
+        raise("program '%s' metadata input must be one of ethertypes, ip, port, or protos", progname)
+    end
     if meta.multi ~= nil and type(meta.multi) ~= "boolean" then
         raise("program '%s' metadata multi must be true or false", progname)
     end
     local multi = meta.multi or false
     local valid_layers = { l2 = true, l3 = true, l4 = true }
+    if meta.input == nil and meta.bpf_value ~= nil then
+        raise("program '%s' without input must not declare bpf_value in program_metadata", progname)
+    end
+    if meta.input ~= nil then
+        if type(meta.bpf_value) ~= "string" then
+            raise("program '%s' with input must declare bpf_value in program_metadata", progname)
+        end
+        _validate_bpf_field(progname, "bpf_value", meta.bpf_value)
+    end
+    if multi and meta.input == nil then
+        raise("program '%s' with multi = true must declare input in program_metadata", progname)
+    end
+    if multi and type(meta.bpf_count) ~= "string" then
+        raise("program '%s' with multi = true must declare bpf_count in program_metadata", progname)
+    end
+    if multi then
+        _validate_bpf_field(progname, "bpf_count", meta.bpf_count)
+    end
+    if multi and meta.bpf_value == meta.bpf_count then
+        raise("program '%s' metadata bpf_value and bpf_count must be distinct", progname)
+    end
+    if not multi and meta.bpf_count ~= nil then
+        raise("program '%s' with multi = false must not declare bpf_count in program_metadata", progname)
+    end
     if meta.chainable then
         if type(meta.layer) ~= "string" then
             raise("program '%s' with chainable = true must declare layer in program_metadata", progname)
@@ -75,8 +151,60 @@ local function _get_metadata(progname)
         input = meta.input,
         multi = multi,
         chainable = meta.chainable,
+        bpf_value = meta.bpf_value,
+        bpf_count = meta.bpf_count,
         layer = meta.layer,
     }
+end
+
+local function _standalone_rodata_assignment(meta)
+    if not meta or not meta.input then
+        return "    // No rodata input for this program."
+    end
+
+    if meta.multi then
+        return string.format([[
+    // Set read-only data through typed skeleton fields before load.
+    if (conf->has_input)
+    {
+        memcpy((void *)obj->rodata->%s,
+               conf->input.%s.values,
+               sizeof(conf->input.%s.values));
+        obj->rodata->%s = conf->input.%s.count;
+        log_out(conf, "done: setting rodata input\n");
+    }]], meta.bpf_value, meta.input, meta.input, meta.bpf_count, meta.input)
+    end
+
+    return string.format([[
+    // Set read-only data through typed skeleton fields before load.
+    if (conf->has_input)
+    {
+        obj->rodata->%s = conf->input.%s;
+        log_out(conf, "done: setting rodata input\n");
+    }]], meta.bpf_value, meta.input)
+end
+
+local function _chain_input_assignment(meta)
+    if not meta.input then
+        return "        // No chain input rodata for this program."
+    end
+
+    if meta.multi then
+        return string.format([[
+        if (entry->has_input)
+        {
+            memcpy((void *)obj->rodata->%s,
+                   entry->input.%s.values,
+                   sizeof(entry->input.%s.values));
+            obj->rodata->%s = entry->input.%s.count;
+        }]], meta.bpf_value, meta.input, meta.input, meta.bpf_count, meta.input)
+    end
+
+    return string.format([[
+        if (entry->has_input)
+        {
+            obj->rodata->%s = entry->input.%s;
+        }]], meta.bpf_value, meta.input)
 end
 
 -- get sourcefiles
@@ -116,7 +244,6 @@ function gen(target, source_target)
         os.cp(configfile_template_path, tempconf)
         local meta = _get_metadata(progname)
         local input_field = meta and meta.input or nil
-        local is_multi = meta and meta.multi or false
         local has_rodata = input_field and 1 or 0
 
         target:add("configfiles", tempconf, {
@@ -124,8 +251,7 @@ function gen(target, source_target)
                 PROGNAME = progname,
                 OPERATION = "attach__",
                 PROGNAME_WITH_RODATA = has_rodata,
-                PROGNAME_INPUT_FIELD = input_field or "",
-                PROGNAME_IS_MULTI_VALUE = is_multi and 1 or 0,
+                PROGNAME_RODATA_ASSIGNMENT = _standalone_rodata_assignment(meta),
             }
         })
     end
@@ -207,15 +333,11 @@ function gen_chain(target, source_target)
         os.tryrm(tempconf)
         os.cp(configfile_template_path, tempconf)
 
-        local input_field = meta.input
-        local has_rodata = input_field and 1 or 0
-
         target:add("configfiles", tempconf, {
             variables = {
                 PROGNAME = progname,
-                PROGNAME_WITH_RODATA = has_rodata,
-                PROGNAME_INPUT_FIELD = input_field or "",
                 PROGNAME_CHAIN_LAYER = meta.layer,
+                PROGNAME_CHAIN_INPUT_ASSIGNMENT = _chain_input_assignment(meta),
             }
         })
 
