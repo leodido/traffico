@@ -8,6 +8,7 @@ import sys
 import time
 
 from scapy.all import (
+    ARP,
     IP,
     IPv6,
     TCP,
@@ -108,6 +109,22 @@ def cmd_send(args):
                 + marker_for(args.ip_id)
             )
         )
+    elif args.type == "vlan-inner-ipv6":
+        pkt = ether(0x8100) / Raw(
+            struct.pack("!HH", 0, 0x86DD) + marker_for(args.ip_id)
+        )
+    elif args.type == "arp-request":
+        pkt = (
+            ether(0x0806)
+            / ARP(
+                op="who-has",
+                psrc=args.src_ip,
+                pdst=args.dst_ip,
+                hwsrc="02:00:00:00:00:02",
+                hwdst="00:00:00:00:00:00",
+            )
+            / Raw(marker_for(args.ip_id))
+        )
     elif args.type == "ipv4-truncated-ihl":
         pkt = ether(0x0800) / Raw(ipv4_header(args, ihl=6, total_length=24))
     elif args.type == "ipv4-truncated-l4":
@@ -170,6 +187,8 @@ def cmd_send(args):
         "ethernet-truncated",
         "vlan-inner-ipv4",
         "qinq-inner-ipv4",
+        "vlan-inner-ipv6",
+        "arp-request",
         "ipv4-truncated-ihl",
         "ipv4-truncated-l4",
         "ipv4-non-l4-dns-port",
@@ -242,6 +261,7 @@ def main():
                                  "fragment-first", "fragment-subsequent",
                                  "ipv4-invalid-ihl", "ethernet-truncated",
                                  "vlan-inner-ipv4", "qinq-inner-ipv4",
+                                 "vlan-inner-ipv6", "arp-request",
                                  "ipv4-truncated-ihl",
                                  "ipv4-truncated-l4",
                                  "ipv4-non-l4-dns-port",
