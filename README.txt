@@ -41,13 +41,33 @@ USAGE
         You can choose an interface and choose whether the program will be loaded in
         "INGRESS" or "EGRESS".
 
-        Example usage:
+        Start with a standalone block program when the policy targets specific
+        traffic and should leave everything else alone:
             traffico --ifname=eth0 --at=INGRESS block_private_ipv4
 
         Programs that accept runtime input (marked [input] in --help) take it
         as a second positional argument:
             traffico --ifname=eth0 block_ipv4 10.0.0.1
             traffico --ifname=eth0 block_port 443
+
+        Use standalone allow programs when the interface should admit only the
+        traffic described by that one program:
+            traffico --ifname=eth0 allow_ipv4 10.0.0.10
+            traffico --ifname=eth0 allow_proto tcp+udp
+            traffico --ifname=eth0 allow_ethertype ipv4+arp
+
+        Use --chain when the policy needs multiple ordered stages. Chains that
+        contain L3/L4 programs must start with the L2 gate allow_ethertype:
+            traffico --ifname=eth0 --chain \
+                "allow_ethertype:ipv4+arp,allow_port:443"
+
+        A fuller quarantine-style egress policy can combine L2, L3, and L4 gates:
+            traffico --ifname=eth0 --at=EGRESS --chain \
+                "allow_ethertype:ipv4+arp,allow_ipv4:10.0.0.10,allow_proto:tcp+udp,allow_dns:10.0.0.53,allow_port:443"
+
+        Chain order is validated before attach. If a chain contains any L3/L4
+        program, slot 0 must be allow_ethertype, and the layer order must be
+        L2 -> L3 -> L4.
 
     traffico-cni
         traffico-cni is a meta CNI plugin that allows the traffico programs to be used in CNI.
