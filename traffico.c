@@ -272,11 +272,6 @@ static error_t parse_cli(int key, char *arg, struct argp_state *state)
                 {
                     argp_error(state, "unknown program in chain: '%s'", prog_name);
                 }
-                if (!program_supports_chaining(g_chain[g_chain_len].program))
-                {
-                    argp_error(state, "program '%s' does not support chaining", prog_name);
-                }
-
                 // Parse input for this program
                 if (input_str)
                 {
@@ -302,46 +297,14 @@ static error_t parse_cli(int key, char *arg, struct argp_state *state)
                 argp_error(state, "--chain requires at least one program");
             }
 
-            bool has_l3_l4 = false;
-            for (int i = 0; i < g_chain_len; i++)
+            const char *validation_err = NULL;
+            program_t validation_program = (program_t)NUM_PROGRAMS;
+            if (validate_chain_entries(g_chain, g_chain_len, &validation_err, &validation_program) != 0)
             {
-                enum chain_layer layer = program_chain_layer(g_chain[i].program);
-                if (layer >= CHAIN_LAYER_L3)
-                {
-                    has_l3_l4 = true;
-                    break;
-                }
-            }
-            if (has_l3_l4 && g_chain[0].program != program_allow_ethertype)
-            {
-                argp_error(state, "L3/L4 chains must start with allow_ethertype");
-            }
-
-            enum chain_layer previous_layer = CHAIN_LAYER_NONE;
-            for (int i = 0; i < g_chain_len; i++)
-            {
-                enum chain_layer layer = program_chain_layer(g_chain[i].program);
-                if (previous_layer != CHAIN_LAYER_NONE &&
-                    layer != CHAIN_LAYER_NONE &&
-                    layer < previous_layer)
-                {
-                    argp_error(state, "chain order must be L2 -> L3 -> L4");
-                }
-
-                if (layer != CHAIN_LAYER_NONE)
-                    previous_layer = layer;
-            }
-
-            if (g_chain_len > 1 && g_chain[0].program == program_allow_ethertype)
-            {
-                for (__u8 j = 0; j < g_chain[0].input.ethertypes.count; j++)
-                {
-                    __u16 v = g_chain[0].input.ethertypes.values[j];
-                    if (v == 0x8100 || v == 0x88A8)
-                    {
-                        argp_error(state, "VLAN EtherTypes in allow_ethertype chains require VLAN-aware L3/L4 parsing");
-                    }
-                }
+                if (validation_program != (program_t)NUM_PROGRAMS)
+                    argp_error(state, "program '%s' does not support chaining", g_programs_name[validation_program]);
+                else
+                    argp_error(state, "%s", validation_err);
             }
         }
         else
