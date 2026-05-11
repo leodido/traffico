@@ -62,13 +62,19 @@ int allow_proto(struct __sk_buff *skb)
         return TC_ACT_SHOT;
     }
 
-    // Passthrough: not IPv4 - protocol filtering doesn't apply.
-    // Non-IPv4 filtering is allow_ethertype's job.
+    // Standalone mode is the complete policy and blocks non-IPv4 after VLAN unwrap.
+    // Chain mode leaves L2 decisions to allow_ethertype and advances.
     if (h_proto != bpf_htons(ETH_P_IP))
     {
-        bpf_printk("allow_proto: [eth] protocol is %d: continue", bpf_ntohs(h_proto));
-        tail_call_next(skb, slot);
-        return TC_ACT_OK;
+        if (chained)
+        {
+            bpf_printk("allow_proto: [eth] protocol is %d: continue", bpf_ntohs(h_proto));
+            tail_call_next(skb, slot);
+            return TC_ACT_OK;
+        }
+
+        bpf_printk("allow_proto: [eth] unsupported ethertype %d: block", bpf_ntohs(h_proto));
+        return TC_ACT_SHOT;
     }
 
     struct iphdr *ip_header = data + l3_offset;
