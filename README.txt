@@ -66,9 +66,10 @@ USAGE
             traffico --ifname=eth0 --at=EGRESS --chain \
                 "allow_ethertype:ipv4+arp,allow_ipv4:10.0.0.10,allow_proto:tcp,allow_port:443"
 
-        DNS resolver restrictions are a separate policy shape, not an OR branch
-        inside the HTTPS chain above. This restricts DNS resolver choice; it
-        does not make a full egress allowlist:
+        As an alternative policy, DNS resolver restrictions can be expressed
+        with their own chain. Do not run this alongside the HTTPS example
+        expecting OR semantics: separate traffico invocations on the same hook
+        are not a managed multi-flow policy.
             traffico --ifname=eth0 --at=EGRESS --chain \
                 "allow_ethertype:ipv4+arp,allow_dns:10.0.0.53"
 
