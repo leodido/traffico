@@ -61,17 +61,19 @@ USAGE
             traffico --ifname=eth0 --chain \
                 "allow_ethertype:ipv4+arp,allow_port:443"
 
-        A stricter single-flow egress policy can combine L2, L3, and L4 gates
-        when every stage describes the same flow:
+        Chains compose checks linearly: each stage narrows the traffic that
+        reaches the next stage. That works well for single-path policies such
+        as HTTPS to one service:
             traffico --ifname=eth0 --at=EGRESS --chain \
                 "allow_ethertype:ipv4+arp,allow_ipv4:10.0.0.10,allow_proto:tcp,allow_port:443"
 
-        As an alternative policy, DNS resolver restrictions can be expressed
-        with their own chain. Do not run this alongside the HTTPS example
-        expecting OR semantics: separate traffico invocations on the same hook
-        are not a managed multi-flow policy.
+        Or DNS to one resolver:
             traffico --ifname=eth0 --at=EGRESS --chain \
                 "allow_ethertype:ipv4+arp,allow_dns:10.0.0.53"
+
+        These examples are alternative linear policies, not an additive
+        multi-flow allowlist. Full policies such as "DNS to resolver OR HTTPS
+        to service" need explicit OR composition.
 
         Chain order is validated before attach. If a chain contains any L3/L4
         program, slot 0 must be allow_ethertype, and the layer order must be
