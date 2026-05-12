@@ -66,10 +66,21 @@ L3/L4 programs must start with the L2 gate `allow_ethertype`:
 traffico --ifname=eth0 --chain "allow_ethertype:ipv4+arp,allow_port:443"
 ```
 
-A fuller quarantine-style egress policy can combine L2, L3, and L4 gates:
+A stricter single-flow egress policy can combine L2, L3, and L4 gates when every
+stage describes the same flow:
 
 ```bash
-traffico --ifname=eth0 --at=EGRESS --chain "allow_ethertype:ipv4+arp,allow_ipv4:10.0.0.10,allow_proto:tcp+udp,allow_dns:10.0.0.53,allow_port:443"
+traffico --ifname=eth0 --at=EGRESS --chain \
+  "allow_ethertype:ipv4+arp,allow_ipv4:10.0.0.10,allow_proto:tcp,allow_port:443"
+```
+
+DNS resolver restrictions are a separate policy shape, not an OR branch inside
+the HTTPS chain above. This restricts DNS resolver choice; it does not make a
+full egress allowlist:
+
+```bash
+traffico --ifname=eth0 --at=EGRESS --chain \
+  "allow_ethertype:ipv4+arp,allow_dns:10.0.0.53"
 ```
 
 Chain order is validated before attach. If a chain contains any L3/L4 program,
