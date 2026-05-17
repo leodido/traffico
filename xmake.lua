@@ -33,14 +33,22 @@ target_end()
 -- test
 add_requires("bats v1.11.1", { system = false })
 add_requires("mini_httpd", { system = false })
+target("intent-ir-unit")
+    set_kind("binary")
+    set_default(false)
+    add_includedirs(".")
+    add_files({ "test/intent_unit.c" }, { languages = { "c11" }})
+target_end()
+
 target("test")
     set_kind("phony")
-    add_deps("traffico", "traffico-cni")
+    add_deps("traffico", "traffico-cni", "intent-ir-unit")
     add_packages("bats", "mini_httpd")
     on_run(function (target)
         for _, name in ipairs(target:get("deps")) do
             os.addenv("PATH", path.absolute(target:dep(name):targetdir()))
         end
+        os.addenv("PATH", path.absolute("tools"))
         import("privilege.sudo")
         sudo.execv("bats", { "-t", "test/" })
     end)
