@@ -80,6 +80,27 @@ docker start -ai traffico-ubuntu-test-runner
 
 If the runner command, image, or mount changes, remove only the named container and recreate it. Keep `traffico-ubuntu-xmake-cache` unless intentionally forcing xmake to rebuild package dependencies.
 
+## Troubleshooting Generated State
+
+If the Docker build fails inside generated headers under `build/.gens` after branch switches, xmake graph changes, or partial rebuilds, suspect stale generated state before blaming CI or BPF source.
+
+One known symptom is a generated API header expecting typed skeleton rodata while the local skeleton does not expose it:
+
+```text
+error: 'struct block_port_bpf' has no member named 'rodata'
+error: 'struct block_ipv4_bpf' has no member named 'rodata'
+```
+
+Run an all-target xmake clean inside the Docker runner, then configure and rebuild:
+
+```sh
+xmake clean -a
+xmake f -c -y --generate-vmlinux=y --require-bpftool=y
+xmake build -y
+```
+
+Use this as a local generated-state reset, not as part of the normal happy path.
+
 ## Arch Fallback
 
 Use [arch-runner.md](arch-runner.md) only when the Ubuntu runner cannot be built or run, an existing Arch runner/cache is already available and known good, or Arch-specific package/build behavior must be reproduced.
