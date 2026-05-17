@@ -219,7 +219,6 @@ xmake -b bpf
 To run the test suite you can do this:
 
 ```bash
-xmake -b test
 xmake run test
 ```
 
