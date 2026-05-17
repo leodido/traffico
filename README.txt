@@ -270,5 +270,4 @@ TEST
 
     To run the test suite you can do this:
 
-    xmake -b test
     xmake run test
