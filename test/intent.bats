@@ -17,13 +17,58 @@ teardown() {
     del_netns "${NETNS}"
 }
 
-@test "Intent live attach is rejected until backend is implemented" {
-    run ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress --allow arp
-    [ $status -eq 1 ]
-    [ "${lines[0]}" == "traffico: intent attach backend is not enabled yet; use --dry-run" ]
+intent_tc_state_exists() {
+    local qdisc
+    local filter
 
+    qdisc="$(ip netns exec "${NETNS}" tc qdisc show dev "${PEER}" clsact)"
+    filter="$(ip netns exec "${NETNS}" tc filter show dev "${PEER}" egress)"
+
+    [[ "${qdisc}" == *"clsact"* && "${filter}" != "" ]]
+}
+
+wait_for_intent_tc_state() {
+    local i
+
+    for i in {1..50}; do
+        if intent_tc_state_exists; then
+            return 0
+        fi
+        sleep 0.1
+    done
+
+    return 1
+}
+
+start_intent_attach() {
+    TRAFFICO_OUTPUT="$1"
+    shift
+
+    ip netns exec "${NETNS}" traffico "$@" >"${TRAFFICO_OUTPUT}" 2>&1 &
+    TRAFFICO_PID=$!
+}
+
+stop_intent_attach() {
+    kill -INT "${TRAFFICO_PID}"
+    wait "${TRAFFICO_PID}"
+}
+
+assert_intent_tc_cleanup() {
     run ip netns exec "${NETNS}" tc qdisc show dev "${PEER}" clsact
     [ "$output" = "" ]
+
+    run ip netns exec "${NETNS}" tc filter show dev "${PEER}" egress
+    [ "$output" = "" ]
+}
+
+@test "Intent live attach creates and cleans TC state" {
+    start_intent_attach "${BATS_TEST_TMPDIR}/intent-live.out" \
+        -i "${PEER}" --at egress --allow arp
+
+    wait_for_intent_tc_state
+    stop_intent_attach
+
+    assert_intent_tc_cleanup
 }
 
 @test "--dry-run validates Intent without attaching" {
@@ -73,13 +118,24 @@ teardown() {
     [[ "$output" == *"TCP/UDP fragments whose destination port cannot be checked"* ]]
 }
 
-@test "--explain prints deterministic intent before live attach rejection" {
-    run --separate-stderr traffico -i lo --at egress --allow arp --explain
-    [ $status -eq 1 ]
-    [ "$output" = "" ]
-    [[ "$stderr" == *"traffico intent"* ]]
-    [[ "$stderr" == *"permitted traffic:"* ]]
-    [[ "$stderr" == *"  1. ARP"* ]]
-    [[ "$stderr" != *"TCP/UDP fragments whose destination port cannot be checked"* ]]
-    [[ "$stderr" == *"traffico: intent attach backend is not enabled yet; use --dry-run"* ]]
+@test "--explain prints deterministic intent before live attach" {
+    local output_file="${BATS_TEST_TMPDIR}/intent-explain-live.out"
+    local intent_output
+    local intent_lines
+
+    start_intent_attach "${output_file}" \
+        -i "${PEER}" --at egress --allow arp --explain
+
+    wait_for_intent_tc_state
+    stop_intent_attach
+
+    intent_output="$(<"${output_file}")"
+    mapfile -t intent_lines <"${output_file}"
+
+    [ "${intent_lines[0]}" == "traffico intent" ]
+    [[ "${intent_output}" == *"permitted traffic:"* ]]
+    [[ "${intent_output}" == *"  1. ARP"* ]]
+    [[ "${intent_output}" != *"TCP/UDP fragments whose destination port cannot be checked"* ]]
+
+    assert_intent_tc_cleanup
 }
