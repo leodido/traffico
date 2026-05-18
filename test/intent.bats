@@ -18,9 +18,12 @@ teardown() {
 }
 
 @test "Intent live attach is rejected until backend is implemented" {
-    run traffico -i lo --at egress --allow arp
+    run ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress --allow arp
     [ $status -eq 1 ]
     [ "${lines[0]}" == "traffico: intent attach backend is not implemented; use --dry-run" ]
+
+    run ip netns exec "${NETNS}" tc qdisc show dev "${PEER}" clsact
+    [ "$output" = "" ]
 }
 
 @test "--dry-run validates Intent without attaching" {
@@ -50,4 +53,13 @@ teardown() {
     [[ "$output" == *"  1. ARP"* ]]
     [[ "$output" == *"  2. TCP to 10.0.0.10 destination port 443"* ]]
     [[ "$output" == *"  3. UDP to 10.0.0.20 destination port 123"* ]]
+}
+
+@test "--explain prints deterministic intent before live attach rejection" {
+    run traffico -i lo --at egress --allow arp --explain
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico intent" ]
+    [[ "$output" == *"permitted traffic:"* ]]
+    [[ "$output" == *"  1. ARP"* ]]
+    [[ "$output" == *"traffico: intent attach backend is not implemented; use --dry-run"* ]]
 }
