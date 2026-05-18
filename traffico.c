@@ -475,6 +475,11 @@ int main(int argc, char **argv)
     {
         return intent_dry_run();
     }
+    if (g_intent_mode)
+    {
+        fprintf(g_config.err_stream, TOOL_NAME ": intent attach backend is not implemented; use --dry-run\n");
+        return 1;
+    }
 
     // Setup signal handling
     if (signal(SIGINT, sig_handler) == SIG_ERR || signal(SIGTERM, sig_handler) == SIG_ERR)
