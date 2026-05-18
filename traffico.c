@@ -49,6 +49,9 @@ const char OPT_PERMIT_LONG[] = "permit";
 const char OPT_PERMIT_ARG[] = "PERMIT";
 #define OPT_DRY_RUN_KEY 0x85
 const char OPT_DRY_RUN_LONG[] = "dry-run";
+#define OPT_EXPLAIN_KEY 0x86
+const char OPT_EXPLAIN_LONG[] = "explain";
+const char OPT_EXPLAIN_ARG[] = "intent|dag";
 
 const struct argp_option argp_opts[] = {
 
@@ -61,6 +64,7 @@ const struct argp_option argp_opts[] = {
     {OPT_ALLOW_LONG, OPT_ALLOW_KEY, OPT_ALLOW_ARG, 0, "Add an Intent permit", 1},
     {OPT_PERMIT_LONG, OPT_PERMIT_KEY, OPT_PERMIT_ARG, 0, "Alias for --allow", 1},
     {OPT_DRY_RUN_LONG, OPT_DRY_RUN_KEY, NULL, 0, "Validate Intent without attaching", 1},
+    {OPT_EXPLAIN_LONG, OPT_EXPLAIN_KEY, OPT_EXPLAIN_ARG, OPTION_ARG_OPTIONAL, "Print normalized Intent", 1},
     {"", 0, 0, OPTION_DOC, 0, 0},
     {0} // .
 
@@ -73,6 +77,7 @@ static char *g_chain_arg = NULL;
 static struct intent g_intent;
 static bool g_intent_mode = false;
 static bool g_intent_dry_run = false;
+static bool g_intent_explain = false;
 
 #define log_erro(fmt, ...) \
     log_err(&g_config, fmt, ##__VA_ARGS__);
@@ -138,6 +143,7 @@ static error_t parse_cli(int key, char *arg, struct argp_state *state)
         intent_init(&g_intent, INTENT_DIRECTION_EGRESS);
         g_intent_mode = false;
         g_intent_dry_run = false;
+        g_intent_explain = false;
         break;
 
     // Options
@@ -184,6 +190,13 @@ static error_t parse_cli(int key, char *arg, struct argp_state *state)
     case OPT_DRY_RUN_KEY:
         g_intent_dry_run = true;
         break;
+    case OPT_EXPLAIN_KEY:
+        g_intent_explain = true;
+        if (arg && strcmp(arg, "intent") != 0)
+        {
+            argp_error(state, "unsupported --explain mode: '%s'", arg);
+        }
+        break;
 
     // Arguments
     case ARGP_KEY_ARG:
@@ -224,6 +237,10 @@ static error_t parse_cli(int key, char *arg, struct argp_state *state)
         if (g_intent_dry_run && !g_intent_mode)
         {
             argp_error(state, "--dry-run currently requires --allow or --permit");
+        }
+        if (g_intent_explain && !g_intent_mode)
+        {
+            argp_error(state, "--explain currently requires --allow or --permit");
         }
 
         // In chain or Intent mode, positional args are not required

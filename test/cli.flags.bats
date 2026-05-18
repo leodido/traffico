@@ -53,6 +53,18 @@ bats_require_minimum_version 1.7.0
     [ "${lines[0]}" == "traffico: --dry-run currently requires --allow or --permit" ]
 }
 
+@test "--explain requires Intent mode" {
+    run traffico -i lo --explain nop
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: --explain currently requires --allow or --permit" ]
+}
+
+@test "--explain=dag is reserved for future Intent debug output" {
+    run traffico -i lo --allow arp --dry-run --explain=dag
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: unsupported --explain mode: 'dag'" ]
+}
+
 @test "invalid option" {
     run traffico -x
     [ ! $status -eq 0 ]
