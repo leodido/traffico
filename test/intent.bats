@@ -44,6 +44,7 @@ teardown() {
         --allow udp/10.0.0.20:123 \
         --allow arp \
         --allow tcp/10.0.0.10:443 \
+        --allow dns/10.0.0.53 \
         --dry-run --explain
     [ $status -eq 0 ]
     [ "${lines[0]}" == "traffico intent" ]
@@ -53,13 +54,17 @@ teardown() {
     [[ "$output" == *"  1. ARP"* ]]
     [[ "$output" == *"  2. TCP to 10.0.0.10 destination port 443"* ]]
     [[ "$output" == *"  3. UDP to 10.0.0.20 destination port 123"* ]]
+    [[ "$output" == *"  4. DNS to 10.0.0.53 over TCP or UDP destination port 53"* ]]
+    [[ "$output" == *"TCP/UDP fragments whose destination port cannot be checked"* ]]
 }
 
 @test "--explain prints deterministic intent before live attach rejection" {
-    run traffico -i lo --at egress --allow arp --explain
+    run --separate-stderr traffico -i lo --at egress --allow arp --explain
     [ $status -eq 1 ]
-    [ "${lines[0]}" == "traffico intent" ]
-    [[ "$output" == *"permitted traffic:"* ]]
-    [[ "$output" == *"  1. ARP"* ]]
-    [[ "$output" == *"traffico: intent attach backend is not implemented; use --dry-run"* ]]
+    [ "$output" = "" ]
+    [[ "$stderr" == *"traffico intent"* ]]
+    [[ "$stderr" == *"permitted traffic:"* ]]
+    [[ "$stderr" == *"  1. ARP"* ]]
+    [[ "$stderr" != *"TCP/UDP fragments whose destination port cannot be checked"* ]]
+    [[ "$stderr" == *"traffico: intent attach backend is not implemented; use --dry-run"* ]]
 }
