@@ -54,6 +54,13 @@ target("enforcement-unit")
     add_files({ "test/enforcement_unit.c" }, { languages = { "c11" }})
 target_end()
 
+target("intent-bpf-unit")
+    set_kind("binary")
+    set_default(false)
+    add_includedirs(".")
+    add_files({ "test/intent_bpf_unit.c" }, { languages = { "c11" }})
+target_end()
+
 target("test")
     set_kind("phony")
     add_packages("bats", "mini_httpd")
@@ -65,12 +72,13 @@ target("test")
         local selected_test_paths = 0
         if #selected == 0 then
             table.insert(bats_args, "test/")
-            build_targets = {"traffico", "traffico-cni", "intent-ir-unit", "ddag-unit", "enforcement-unit"}
+            build_targets = {"traffico", "traffico-cni", "intent-ir-unit", "ddag-unit", "enforcement-unit", "intent-bpf-unit"}
         else
             local needs_full_suite_targets = false
             local needs_intent_ir_unit = false
             local needs_ddag_unit = false
             local needs_enforcement_unit = false
+            local needs_intent_bpf_unit = false
             for _, arg in ipairs(selected) do
                 table.insert(bats_args, arg)
                 if arg == "test" or arg == "test/" or arg:find("%.bats$") then
@@ -81,6 +89,8 @@ target("test")
                         needs_ddag_unit = true
                     elseif arg:find("enforcement_unit", 1, true) then
                         needs_enforcement_unit = true
+                    elseif arg:find("intent_bpf_unit", 1, true) then
+                        needs_intent_bpf_unit = true
                     else
                         needs_full_suite_targets = true
                     end
@@ -88,9 +98,9 @@ target("test")
             end
             if selected_test_paths == 0 then
                 table.insert(bats_args, "test/")
-                build_targets = {"traffico", "traffico-cni", "intent-ir-unit", "ddag-unit", "enforcement-unit"}
+                build_targets = {"traffico", "traffico-cni", "intent-ir-unit", "ddag-unit", "enforcement-unit", "intent-bpf-unit"}
             elseif needs_full_suite_targets then
-                build_targets = {"traffico", "traffico-cni", "intent-ir-unit", "ddag-unit", "enforcement-unit"}
+                build_targets = {"traffico", "traffico-cni", "intent-ir-unit", "ddag-unit", "enforcement-unit", "intent-bpf-unit"}
             else
                 if needs_intent_ir_unit then
                     table.insert(build_targets, "intent-ir-unit")
@@ -100,6 +110,9 @@ target("test")
                 end
                 if needs_enforcement_unit then
                     table.insert(build_targets, "enforcement-unit")
+                end
+                if needs_intent_bpf_unit then
+                    table.insert(build_targets, "intent-bpf-unit")
                 end
             end
         end
