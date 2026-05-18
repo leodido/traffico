@@ -1,0 +1,120 @@
+#ifndef TRAFFICO_INTENT_BPF_LOADER_H
+#define TRAFFICO_INTENT_BPF_LOADER_H
+
+#include <string.h>
+
+#include "api.h"
+#include "intent.skel.h"
+#include "api/intent_bpf.h"
+
+static int attach_intent_bpf(struct config *conf,
+                             const struct intent_bpf_plan *plan,
+                             after_attach_fn_t cb)
+{
+    int err;
+    int hook_created = 0;
+    int prog_attached = 0;
+    char buf[100];
+    buf[sizeof(buf) - 1] = '\0';
+
+    struct intent_bpf *obj = intent_bpf__open();
+    if (!obj)
+    {
+        log_err(conf, "fail: opening intent skeleton\n");
+        return 1;
+    }
+
+    obj->rodata->intent_rule_count = plan->rule_count;
+    for (uint32_t i = 0; i < plan->rule_count; i++)
+    {
+        obj->rodata->intent_rules[i].kind = plan->rules[i].kind;
+        obj->rodata->intent_rules[i].ip_proto_count = plan->rules[i].ip_proto_count;
+        obj->rodata->intent_rules[i].ip_protos[0] = plan->rules[i].ip_protos[0];
+        obj->rodata->intent_rules[i].ip_protos[1] = plan->rules[i].ip_protos[1];
+        obj->rodata->intent_rules[i].l4_dst_port = plan->rules[i].l4_dst_port;
+        obj->rodata->intent_rules[i].ip_dst = plan->rules[i].ip_dst;
+    }
+
+    err = intent_bpf__load(obj);
+    if (err)
+    {
+        libbpf_strerror(err, buf, sizeof(buf));
+        log_err(conf, "fail: loading intent skeleton: %s\n", buf);
+        goto destroy;
+    }
+
+    DECLARE_LIBBPF_OPTS(bpf_tc_hook, hook,
+                        .ifindex = conf->ifindex,
+                        .attach_point = conf->attach_point);
+    err = bpf_tc_hook_create(&hook);
+    if (!err)
+    {
+        hook_created = 1;
+    }
+    else if (err != -EEXIST)
+    {
+        libbpf_strerror(err, buf, sizeof(buf));
+        log_err(conf, "fail: creating the qdisc: %s\n", buf);
+        goto destroy;
+    }
+
+    int fd = bpf_program__fd(obj->progs.intent);
+    DECLARE_LIBBPF_OPTS(bpf_tc_opts, opts,
+                        .prog_fd = fd,
+                        .flags = BPF_TC_F_REPLACE);
+    err = bpf_tc_attach(&hook, &opts);
+    if (err)
+    {
+        libbpf_strerror(err, buf, sizeof(buf));
+        log_err(conf, "fail: attaching intent program: %s\n", buf);
+        goto cleanup_hook;
+    }
+    prog_attached = 1;
+    log_out(conf, "done: attached intent program\n");
+
+    err = cb(hook, opts);
+
+    if (conf->cleanup_on_exit && prog_attached)
+    {
+        int cleanup_err;
+        opts.prog_fd = opts.prog_id = 0;
+        opts.flags = 0;
+        cleanup_err = bpf_tc_detach(&hook, &opts);
+        if (!cleanup_err)
+        {
+            log_out(conf, "done: detached intent program\n");
+        }
+        else
+        {
+            libbpf_strerror(cleanup_err, buf, sizeof(buf));
+            log_err(conf, "fail: detaching intent program: %s\n", buf);
+            if (!err)
+                err = cleanup_err;
+        }
+    }
+
+cleanup_hook:
+    if (hook_created && (conf->cleanup_on_exit || !prog_attached))
+    {
+        int cleanup_err;
+        hook.attach_point |= BPF_TC_INGRESS;
+        cleanup_err = bpf_tc_hook_destroy(&hook);
+        if (!cleanup_err)
+        {
+            log_out(conf, "done: destroyed qdisc\n");
+        }
+        else
+        {
+            libbpf_strerror(cleanup_err, buf, sizeof(buf));
+            log_err(conf, "fail: destroying qdisc: %s\n", buf);
+            if (!err)
+                err = cleanup_err;
+        }
+    }
+
+destroy:
+    intent_bpf__destroy(obj);
+    return err < 0 ? -err : err;
+}
+
+#endif
