@@ -5,7 +5,7 @@
 
 #include "api.h"
 #include "intent.skel.h"
-#include "api/intent_bpf.h"
+#include "intent_bpf.h"
 
 static int attach_intent_bpf(struct config *conf,
                              const struct intent_bpf_plan *plan,
