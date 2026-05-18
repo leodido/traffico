@@ -138,6 +138,19 @@ static int test_parse_first_permits(void)
     return 0;
 }
 
+static int test_parse_ipv4_addresses(void)
+{
+    uint32_t ip = 0;
+
+    CHECK(intent_parse_ipv4("10.0.0.53", &ip) == 0);
+    CHECK(ip == 0x0a000035);
+    CHECK(intent_parse_ipv4("", &ip) == -1);
+    CHECK(intent_parse_ipv4("999.999.999.999", &ip) == -1);
+    CHECK(intent_parse_ipv4("10.0.0.1x", &ip) == -1);
+
+    return 0;
+}
+
 static int test_rejects_invalid_and_duplicate_permits(void)
 {
     struct intent intent = {0};
@@ -192,7 +205,7 @@ static int test_rejects_duplicate_lowered_permits(void)
 static int test_rejects_permit_too_long(void)
 {
     struct intent intent = {0};
-    char permit[129];
+    char permit[MAX_INTENT_PERMIT_INPUT_LEN + 1];
     const char *err = NULL;
 
     intent_init(&intent, INTENT_DIRECTION_EGRESS);
@@ -202,6 +215,33 @@ static int test_rejects_permit_too_long(void)
 
     CHECK(intent_add_permit(&intent, permit, &err) == -1);
     CHECK(strcmp(err, "permit too long") == 0);
+
+    return 0;
+}
+
+static int test_append_normalizes_predicate_order(void)
+{
+    struct intent intent = {0};
+    struct intent_permit first;
+    struct intent_permit second;
+    const char *err = NULL;
+
+    intent_init(&intent, INTENT_DIRECTION_EGRESS);
+    intent_permit_init(&first);
+    intent_permit_init(&second);
+
+    CHECK(intent_add_eq(&first, INTENT_FIELD_ETH_TYPE, INTENT_ETH_P_IP, &err) == 0);
+    CHECK(intent_add_eq(&first, INTENT_FIELD_IP_PROTO, INTENT_IPPROTO_TCP, &err) == 0);
+
+    CHECK(intent_add_eq(&second, INTENT_FIELD_IP_PROTO, INTENT_IPPROTO_TCP, &err) == 0);
+    CHECK(intent_add_eq(&second, INTENT_FIELD_ETH_TYPE, INTENT_ETH_P_IP, &err) == 0);
+
+    CHECK(intent_append_permit(&intent, &second, &err) == 0);
+    CHECK(intent.permits[0].predicates[0].field == INTENT_FIELD_ETH_TYPE);
+    CHECK(intent.permits[0].predicates[1].field == INTENT_FIELD_IP_PROTO);
+
+    CHECK(intent_append_permit(&intent, &first, &err) == -1);
+    CHECK(strcmp(err, "duplicate permit") == 0);
 
     return 0;
 }
@@ -256,9 +296,11 @@ static int test_normalization_is_order_independent(void)
 int main(void)
 {
     RUN_TEST(test_parse_first_permits);
+    RUN_TEST(test_parse_ipv4_addresses);
     RUN_TEST(test_rejects_invalid_and_duplicate_permits);
     RUN_TEST(test_rejects_duplicate_lowered_permits);
     RUN_TEST(test_rejects_permit_too_long);
+    RUN_TEST(test_append_normalizes_predicate_order);
     RUN_TEST(test_rejects_too_many_permits);
     RUN_TEST(test_normalization_is_order_independent);
     puts("intent unit tests: ok");

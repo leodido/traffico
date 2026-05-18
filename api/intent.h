@@ -8,6 +8,9 @@
 #include <string.h>
 
 #define MAX_INTENT_PERMITS 32
+/* Current permit grammar is IPv4-only. Revisit this bound with IPv6 support. */
+#define MAX_INTENT_PERMIT_INPUT_LEN 128
+/* Reserved for forbid lowering; permits are the only accepted CLI rule today. */
 #define MAX_INTENT_FORBIDS 32
 #define MAX_INTENT_PREDICATES 6
 #define MAX_INTENT_SET_VALUES 4
@@ -47,6 +50,7 @@ enum intent_predicate_op
 {
     INTENT_OP_EQ = 0,
     INTENT_OP_IN = 1,
+    /* Reserved for future CIDR predicates; unsupported until lowered explicitly. */
     INTENT_OP_CIDR_CONTAINS = 2,
 };
 
@@ -142,6 +146,37 @@ static inline bool intent_predicate_equal(const struct intent_predicate *left,
     return true;
 }
 
+static inline int intent_predicate_compare(const struct intent_predicate *left,
+                                           const struct intent_predicate *right)
+{
+    if (left->field != right->field)
+        return (int)left->field - (int)right->field;
+    if (left->op != right->op)
+        return (int)left->op - (int)right->op;
+    if (left->values.count != right->values.count)
+        return left->values.count < right->values.count ? -1 : 1;
+    for (size_t i = 0; i < left->values.count; i++)
+    {
+        if (left->values.values[i] != right->values.values[i])
+            return left->values.values[i] < right->values.values[i] ? -1 : 1;
+    }
+    return 0;
+}
+
+static inline int intent_predicate_qsort_compare(const void *left,
+                                                 const void *right)
+{
+    return intent_predicate_compare(left, right);
+}
+
+static inline void intent_normalize_permit(struct intent_permit *permit)
+{
+    qsort(permit->predicates,
+          permit->predicate_count,
+          sizeof(permit->predicates[0]),
+          intent_predicate_qsort_compare);
+}
+
 static inline bool intent_permit_equal(const struct intent_permit *left,
                                        const struct intent_permit *right)
 {
@@ -222,7 +257,10 @@ static inline int intent_append_permit(struct intent *intent,
                                        const struct intent_permit *permit,
                                        const char **err_msg)
 {
-    if (intent_has_permit(intent, permit))
+    struct intent_permit normalized = *permit;
+    intent_normalize_permit(&normalized);
+
+    if (intent_has_permit(intent, &normalized))
     {
         *err_msg = "duplicate permit";
         return -1;
@@ -232,7 +270,7 @@ static inline int intent_append_permit(struct intent *intent,
         *err_msg = "too many permits";
         return -1;
     }
-    intent->permits[intent->permit_count] = *permit;
+    intent->permits[intent->permit_count] = normalized;
     intent->permit_count++;
     return 0;
 }
@@ -299,12 +337,13 @@ static inline int intent_add_permit(struct intent *intent,
                                     const char *arg,
                                     const char **err_msg)
 {
-    char buf[128];
+    char buf[MAX_INTENT_PERMIT_INPUT_LEN];
     char *kind = NULL;
     char *target = NULL;
     char *port = NULL;
+    size_t arg_len = strlen(arg);
 
-    if (strlen(arg) >= sizeof(buf))
+    if (arg_len >= sizeof(buf))
     {
         *err_msg = "permit too long";
         return -1;
@@ -313,7 +352,7 @@ static inline int intent_add_permit(struct intent *intent,
     if (strcmp(arg, "arp") == 0)
         return intent_add_arp_permit(intent, err_msg);
 
-    memcpy(buf, arg, strlen(arg) + 1);
+    memcpy(buf, arg, arg_len + 1);
     kind = buf;
     target = strchr(kind, '/');
     if (!target)
@@ -359,23 +398,6 @@ static inline int intent_add_permit(struct intent *intent,
     return -1;
 }
 
-static inline int intent_predicate_compare(const struct intent_predicate *left,
-                                           const struct intent_predicate *right)
-{
-    if (left->field != right->field)
-        return (int)left->field - (int)right->field;
-    if (left->op != right->op)
-        return (int)left->op - (int)right->op;
-    if (left->values.count != right->values.count)
-        return left->values.count < right->values.count ? -1 : 1;
-    for (size_t i = 0; i < left->values.count; i++)
-    {
-        if (left->values.values[i] != right->values.values[i])
-            return left->values.values[i] < right->values.values[i] ? -1 : 1;
-    }
-    return 0;
-}
-
 static inline int intent_permit_compare(const void *left, const void *right)
 {
     const struct intent_permit *a = left;
@@ -395,6 +417,8 @@ static inline int intent_permit_compare(const void *left, const void *right)
 
 static inline void intent_normalize(struct intent *intent)
 {
+    for (size_t i = 0; i < intent->permit_count; i++)
+        intent_normalize_permit(&intent->permits[i]);
     qsort(intent->permits,
           intent->permit_count,
           sizeof(intent->permits[0]),
