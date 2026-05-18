@@ -60,6 +60,7 @@ local program_metadata = {
 -- program list, enum, and dispatch table.
 local internal_programs = {
     dispatcher = true,
+    intent = true,
 }
 
 local config_input_fields = {
@@ -387,4 +388,17 @@ function chain(target, components_target)
 
     local configfile = path.join(target:scriptdir(), "chain.h.in")
     target:add("configfiles", configfile, { variables = v })
+end
+
+function intent_bpf(target)
+    if not target then
+        raise("could not configure target")
+    end
+
+    local gendir = target:autogendir()
+    target:add("includedirs", gendir, { public = true })
+    target:set("configdir", gendir)
+
+    local configfile = path.join(target:scriptdir(), "intent_bpf_loader.h.in")
+    target:add("configfiles", configfile)
 end
