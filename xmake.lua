@@ -40,7 +40,7 @@ target("intent-ir-unit")
     add_files({ "test/intent_unit.c" }, { languages = { "c11" }})
 target_end()
 
-target("dag-unit")
+target("ddag-unit")
     set_kind("binary")
     set_default(false)
     add_includedirs(".")
@@ -58,7 +58,7 @@ target("test")
         local selected_test_paths = 0
         if #selected == 0 then
             table.insert(bats_args, "test/")
-            build_targets = {"traffico", "traffico-cni", "intent-ir-unit", "dag-unit"}
+            build_targets = {"traffico", "traffico-cni", "intent-ir-unit", "ddag-unit"}
         else
             local needs_full_suite_targets = false
             local needs_intent_ir_unit = false
@@ -78,15 +78,15 @@ target("test")
             end
             if selected_test_paths == 0 then
                 table.insert(bats_args, "test/")
-                build_targets = {"traffico", "traffico-cni", "intent-ir-unit", "dag-unit"}
+                build_targets = {"traffico", "traffico-cni", "intent-ir-unit", "ddag-unit"}
             elseif needs_full_suite_targets then
-                build_targets = {"traffico", "traffico-cni", "intent-ir-unit", "dag-unit"}
+                build_targets = {"traffico", "traffico-cni", "intent-ir-unit", "ddag-unit"}
             else
                 if needs_intent_ir_unit then
                     table.insert(build_targets, "intent-ir-unit")
                 end
                 if needs_dag_unit then
-                    table.insert(build_targets, "dag-unit")
+                    table.insert(build_targets, "ddag-unit")
                 end
             end
         end

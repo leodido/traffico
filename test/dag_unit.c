@@ -352,6 +352,6 @@ int main(void)
     RUN_TEST(test_decision_dag_rejects_unsupported_subset_predicates);
     RUN_TEST(test_decision_dag_rejects_unguarded_l4_port_predicates);
     RUN_TEST(test_decision_dag_rejects_unguarded_ip_predicates);
-    puts("dag unit tests: ok");
+    puts("ddag unit tests: ok");
     return 0;
 }
