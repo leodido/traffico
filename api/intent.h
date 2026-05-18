@@ -352,6 +352,11 @@ static inline int intent_add_permit(struct intent *intent,
 
     if (strcmp(kind, "dns") == 0)
     {
+        /*
+         * dns/IP is a service shortcut for TCP+UDP destination port 53.
+         * Keep dns/IP:PORT rejected so custom ports must be spelled
+         * explicitly as tcp/IP:PORT and udp/IP:PORT.
+         */
         if (strchr(target, ':'))
             return intent_fail(err_msg, "dns permits do not accept a port");
         return intent_add_dns_permit(intent, target, err_msg);
