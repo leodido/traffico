@@ -28,6 +28,13 @@ bats_require_minimum_version 1.7.0
     [[ "$output" == *"intent backend: not implemented"* ]]
 }
 
+@test "--permit is an alias for --allow" {
+    run traffico -i lo --at egress --permit tcp/10.0.0.10:443 --dry-run
+    [ $status -eq 0 ]
+    [[ "$output" == *"intent dry-run: compiler ok"* ]]
+    [[ "$output" == *"intent backend: not implemented"* ]]
+}
+
 @test "invalid option" {
     run traffico -x
     [ ! $status -eq 0 ]
