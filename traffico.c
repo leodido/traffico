@@ -17,6 +17,7 @@
 #include "api/input_parse.h"
 #include "api/intent_bpf.h"
 #include "chain.h"
+#include "intent_bpf_loader.h"
 
 const char *argp_program_version = TOOL_NAME " 0.0";
 const char *argp_program_bug_address = "https://github.com/leodido/traffico/issues";
@@ -498,7 +499,7 @@ static int intent_dry_run(void)
     return 0;
 }
 
-static int intent_reject_live_attach(void)
+static int intent_attach(void)
 {
     struct intent_enforcement_plan plan = {0};
     struct intent_bpf_plan bpf_plan = {0};
@@ -508,9 +509,8 @@ static int intent_reject_live_attach(void)
         return 1;
     }
 
-    intent_explain(g_config.err_stream);
-    fprintf(g_config.err_stream, TOOL_NAME ": intent attach backend is not enabled yet; use --dry-run\n");
-    return 1;
+    intent_explain(g_config.out_stream);
+    return attach_intent_bpf(&g_config, &bpf_plan, &await);
 }
 
 int main(int argc, char **argv)
@@ -530,10 +530,6 @@ int main(int argc, char **argv)
     {
         return intent_dry_run();
     }
-    if (g_intent_mode)
-    {
-        return intent_reject_live_attach();
-    }
 
     // Setup signal handling
     if (signal(SIGINT, sig_handler) == SIG_ERR || signal(SIGTERM, sig_handler) == SIG_ERR)
@@ -545,6 +541,11 @@ int main(int argc, char **argv)
     // Setup libbpf
     libbpf_set_strict_mode(LIBBPF_STRICT_ALL);
     libbpf_set_print(libbpf_print_fn);
+
+    if (g_intent_mode)
+    {
+        return intent_attach();
+    }
 
     // Execute
     if (g_chain_len > 0)

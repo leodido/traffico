@@ -397,6 +397,7 @@ function intent_bpf(target)
 
     local gendir = target:autogendir()
     target:add("includedirs", gendir, { public = true })
+    target:add("includedirs", target:scriptdir(), { public = true })
     target:set("configdir", gendir)
 
     local configfile = path.join(target:scriptdir(), "intent_bpf_loader.h.in")
