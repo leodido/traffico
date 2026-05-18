@@ -13,7 +13,9 @@
 
 #include "api.h"
 #include "api/dag.h"
+#include "api/enforcement.h"
 #include "api/input_parse.h"
+#include "api/intent_bpf.h"
 #include "chain.h"
 
 const char *argp_program_version = TOOL_NAME " 0.0";
@@ -446,7 +448,9 @@ int await(struct bpf_tc_hook hook, struct bpf_tc_opts opts)
     return 0;
 }
 
-static int intent_validate(const char *context)
+static int intent_compile_for_bpf(const char *context,
+                                  struct intent_enforcement_plan *plan,
+                                  struct intent_bpf_plan *bpf_plan)
 {
     struct decision_dag dag = {0};
     const char *err_msg = NULL;
@@ -456,7 +460,8 @@ static int intent_validate(const char *context)
      * This keeps dry-run aligned with the attach preconditions.
      */
     if (intent_build_dag(&g_intent, &dag, &err_msg) != 0 ||
-        intent_validate_supported_subset(&dag, &err_msg) != 0)
+        intent_enforcement_plan_from_dag(&dag, plan, &err_msg) != 0 ||
+        intent_bpf_plan_from_enforcement(plan, bpf_plan, &err_msg) != 0)
     {
         fprintf(g_config.err_stream, TOOL_NAME ": %s: %s\n", context, err_msg);
         return 1;
@@ -479,26 +484,32 @@ static void intent_explain(FILE *out)
 
 static int intent_dry_run(void)
 {
-    if (intent_validate("intent dry-run") != 0)
+    struct intent_enforcement_plan plan = {0};
+    struct intent_bpf_plan bpf_plan = {0};
+
+    if (intent_compile_for_bpf("intent dry-run", &plan, &bpf_plan) != 0)
     {
         return 1;
     }
 
     intent_explain(g_config.out_stream);
     fprintf(g_config.out_stream, "intent dry-run: compiler ok\n");
-    fprintf(g_config.out_stream, "intent backend: not implemented\n");
+    fprintf(g_config.out_stream, "intent backend: bpf admissible\n");
     return 0;
 }
 
 static int intent_reject_live_attach(void)
 {
-    if (intent_validate("intent attach") != 0)
+    struct intent_enforcement_plan plan = {0};
+    struct intent_bpf_plan bpf_plan = {0};
+
+    if (intent_compile_for_bpf("intent attach", &plan, &bpf_plan) != 0)
     {
         return 1;
     }
 
     intent_explain(g_config.err_stream);
-    fprintf(g_config.err_stream, TOOL_NAME ": intent attach backend is not implemented; use --dry-run\n");
+    fprintf(g_config.err_stream, TOOL_NAME ": intent attach backend is not enabled yet; use --dry-run\n");
     return 1;
 }
 

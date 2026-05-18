@@ -25,14 +25,14 @@ bats_require_minimum_version 1.7.0
         --dry-run
     [ $status -eq 0 ]
     [[ "$output" == *"intent dry-run: compiler ok"* ]]
-    [[ "$output" == *"intent backend: not implemented"* ]]
+    [[ "$output" == *"intent backend: bpf admissible"* ]]
 }
 
 @test "--permit is an alias for --allow" {
     run traffico -i lo --at egress --permit tcp/10.0.0.10:443 --dry-run
     [ $status -eq 0 ]
     [[ "$output" == *"intent dry-run: compiler ok"* ]]
-    [[ "$output" == *"intent backend: not implemented"* ]]
+    [[ "$output" == *"intent backend: bpf admissible"* ]]
 }
 
 @test "--allow and --chain are mutually exclusive" {
