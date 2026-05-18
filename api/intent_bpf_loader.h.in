@@ -94,7 +94,7 @@ static int attach_intent_bpf(struct config *conf,
     }
 
 cleanup_hook:
-    if (hook_created && (conf->cleanup_on_exit || !prog_attached))
+    if (intent_bpf_should_destroy_hook(conf->cleanup_on_exit, hook_created, prog_attached))
     {
         int cleanup_err;
         hook.attach_point |= BPF_TC_INGRESS;

@@ -71,6 +71,16 @@ assert_intent_tc_cleanup() {
     assert_intent_tc_cleanup
 }
 
+@test "Intent --no-cleanup preserves TC state after successful attach" {
+    start_intent_attach "${BATS_TEST_TMPDIR}/intent-no-cleanup.out" \
+        --no-cleanup -i "${PEER}" --at egress --allow arp
+
+    wait_for_intent_tc_state
+    stop_intent_attach
+
+    intent_tc_state_exists
+}
+
 @test "--dry-run validates Intent without attaching" {
     run ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress \
         --allow arp \
