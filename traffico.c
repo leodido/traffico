@@ -242,6 +242,10 @@ static error_t parse_cli(int key, char *arg, struct argp_state *state)
         {
             argp_error(state, "--explain currently requires --allow or --permit");
         }
+        if (g_intent_mode && g_config.attach_point != BPF_TC_EGRESS)
+        {
+            argp_error(state, "intent currently supports --at egress only");
+        }
 
         // In chain or Intent mode, positional args are not required
         if (!g_chain_arg && !g_intent_mode)
