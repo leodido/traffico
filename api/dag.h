@@ -115,6 +115,11 @@ static inline int intent_build_dag(const struct intent *intent,
     dag->root = 0;
     dag->node_count = node_count;
 
+    /*
+     * First implementation emits one linear predicate chain per permit. Common
+     * prefix sharing can reduce repeated checks later without changing DDAG
+     * semantics.
+     */
     for (size_t i = 0; i < intent->permit_count; i++)
     {
         const struct intent_permit *permit = &intent->permits[i];
