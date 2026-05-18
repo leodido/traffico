@@ -71,6 +71,35 @@ bats_require_minimum_version 1.7.0
     [ "${lines[0]}" == "traffico: intent currently supports --at egress only" ]
 }
 
+@test "--allow rejects malformed values" {
+    run traffico -i lo --allow tcp/10.0.0.10 --dry-run
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: invalid permit: 'tcp/10.0.0.10'" ]
+}
+
+@test "--allow rejects unsupported Intent value" {
+    run traffico -i lo --allow icmp/10.0.0.10 --dry-run
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: unsupported permit: 'icmp/10.0.0.10'" ]
+}
+
+@test "--allow rejects duplicate permits" {
+    run traffico -i lo --allow arp --allow arp --dry-run
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: duplicate permit: 'arp'" ]
+}
+
+@test "--allow rejects too many permits" {
+    args=(-i lo --dry-run)
+    for port in {10000..10032}; do
+        args+=(--allow "tcp/10.0.0.10:${port}")
+    done
+
+    run traffico "${args[@]}"
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: too many permits: 'tcp/10.0.0.10:10032'" ]
+}
+
 @test "invalid option" {
     run traffico -x
     [ ! $status -eq 0 ]
