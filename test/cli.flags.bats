@@ -65,6 +65,13 @@ bats_require_minimum_version 1.7.0
     [ "${lines[0]}" == "traffico: unsupported --explain mode: 'dag'" ]
 }
 
+@test "--explain=intent is the explicit Intent explain mode" {
+    run traffico -i lo --allow arp --dry-run --explain=intent
+    [ $status -eq 0 ]
+    [[ "$output" == *"traffico intent"* ]]
+    [[ "$output" == *"permitted traffic:"* ]]
+}
+
 @test "Intent mode rejects ingress until designed" {
     run traffico -i lo --at ingress --allow arp --dry-run
     [ $status -eq 1 ]
