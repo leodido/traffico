@@ -588,7 +588,7 @@ static inline int intent_print_explain(FILE *out,
             continue;
         }
 
-        fprintf(out, "  %zu. unsupported normalized permit\n", i + 1);
+        fprintf(out, "  %zu. permit cannot be explained by this traffico version\n", i + 1);
     }
 
     fprintf(out, "\ndropped traffic:\n");

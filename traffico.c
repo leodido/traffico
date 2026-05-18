@@ -242,6 +242,14 @@ static error_t parse_cli(int key, char *arg, struct argp_state *state)
         {
             argp_error(state, "--explain currently requires --allow or --permit");
         }
+        if (g_intent_mode)
+        {
+            if (g_config.attach_point == BPF_TC_INGRESS)
+                g_intent.direction = INTENT_DIRECTION_INGRESS;
+            else
+                g_intent.direction = INTENT_DIRECTION_EGRESS;
+            intent_normalize(&g_intent);
+        }
         if (g_intent_mode && g_config.attach_point != BPF_TC_EGRESS)
         {
             argp_error(state, "intent currently supports --at egress only");
@@ -371,14 +379,7 @@ static error_t parse_cli(int key, char *arg, struct argp_state *state)
                     argp_error(state, "%s", validation_err);
             }
         }
-        else if (g_intent_mode)
-        {
-            if (g_config.attach_point == BPF_TC_INGRESS)
-                g_intent.direction = INTENT_DIRECTION_INGRESS;
-            else
-                g_intent.direction = INTENT_DIRECTION_EGRESS;
-        }
-        else
+        else if (!g_intent_mode)
         {
             // Single program mode: parse input value
             if (g_config.input_arg)
@@ -445,7 +446,6 @@ static int intent_validate(const char *context)
     struct decision_dag dag = {0};
     const char *err_msg = NULL;
 
-    intent_normalize(&g_intent);
     if (intent_build_dag(&g_intent, &dag, &err_msg) != 0 ||
         intent_validate_supported_subset(&dag, &err_msg) != 0)
     {
