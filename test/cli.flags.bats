@@ -7,13 +7,25 @@ bats_require_minimum_version 1.7.0
 @test "help" {
     run traffico --help
     [ $status -eq 0 ]
-    [ "${lines[0]}" == 'Usage: traffico [OPTION...] PROGRAM [INPUT]' ]
+    [ "${lines[0]}" == 'Usage: traffico [OPTION...] [PROGRAM [INPUT]]' ]
 }
 
 @test "usage" {
     run traffico --usage
     [ $status -eq 0 ]
     [ "${lines[0]%% *}" == 'Usage:' ]
+}
+
+@test "--allow accepts first Intent values in dry-run mode" {
+    run traffico -i lo --at egress \
+        --allow arp \
+        --allow dns/10.0.0.53 \
+        --allow tcp/10.0.0.10:443 \
+        --allow udp/10.0.0.20:123 \
+        --dry-run
+    [ $status -eq 0 ]
+    [[ "$output" == *"intent dry-run: compiler ok"* ]]
+    [[ "$output" == *"intent backend: not implemented"* ]]
 }
 
 @test "invalid option" {
