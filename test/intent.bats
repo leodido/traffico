@@ -20,7 +20,7 @@ teardown() {
 @test "Intent live attach is rejected until backend is implemented" {
     run ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress --allow arp
     [ $status -eq 1 ]
-    [ "${lines[0]}" == "traffico: intent attach backend is not implemented; use --dry-run" ]
+    [ "${lines[0]}" == "traffico: intent attach backend is not enabled yet; use --dry-run" ]
 
     run ip netns exec "${NETNS}" tc qdisc show dev "${PEER}" clsact
     [ "$output" = "" ]
@@ -33,7 +33,7 @@ teardown() {
         --dry-run
     [ $status -eq 0 ]
     [[ "$output" == *"intent dry-run: compiler ok"* ]]
-    [[ "$output" == *"intent backend: not implemented"* ]]
+    [[ "$output" == *"intent backend: bpf admissible"* ]]
 
     run ip netns exec "${NETNS}" tc qdisc show dev "${PEER}" clsact
     [ "$output" = "" ]
@@ -81,5 +81,5 @@ teardown() {
     [[ "$stderr" == *"permitted traffic:"* ]]
     [[ "$stderr" == *"  1. ARP"* ]]
     [[ "$stderr" != *"TCP/UDP fragments whose destination port cannot be checked"* ]]
-    [[ "$stderr" == *"traffico: intent attach backend is not implemented; use --dry-run"* ]]
+    [[ "$stderr" == *"traffico: intent attach backend is not enabled yet; use --dry-run"* ]]
 }
