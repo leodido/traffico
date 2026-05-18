@@ -97,6 +97,13 @@ static inline void intent_init(struct intent *intent,
     intent->default_action = INTENT_ACTION_DROP;
 }
 
+static inline int intent_fail(const char **err_msg, const char *msg)
+{
+    if (err_msg)
+        *err_msg = msg;
+    return -1;
+}
+
 static inline int intent_parse_ipv4(const char *value, uint32_t *out)
 {
     struct in_addr addr;
@@ -201,10 +208,7 @@ static inline int intent_add_predicate(struct intent_permit *permit,
     if (permit->predicate_count >= MAX_INTENT_PREDICATES ||
         value_count == 0 ||
         value_count > MAX_INTENT_SET_VALUES)
-    {
-        *err_msg = "invalid permit";
-        return -1;
-    }
+        return intent_fail(err_msg, "invalid permit");
 
     struct intent_predicate *predicate = &permit->predicates[permit->predicate_count];
     predicate->field = field;
@@ -260,16 +264,12 @@ static inline int intent_append_permit(struct intent *intent,
     struct intent_permit normalized = *permit;
     intent_normalize_permit(&normalized);
 
+    if (normalized.predicate_count == 0)
+        return intent_fail(err_msg, "permit has no predicates");
     if (intent_has_permit(intent, &normalized))
-    {
-        *err_msg = "duplicate permit";
-        return -1;
-    }
+        return intent_fail(err_msg, "duplicate permit");
     if (intent->permit_count >= MAX_INTENT_PERMITS)
-    {
-        *err_msg = "too many permits";
-        return -1;
-    }
+        return intent_fail(err_msg, "too many permits");
     intent->permits[intent->permit_count] = normalized;
     intent->permit_count++;
     return 0;
@@ -294,10 +294,7 @@ static inline int intent_add_dns_permit(struct intent *intent,
     intent_permit_init(&permit);
 
     if (intent_parse_ipv4(ip, &dst_ip) != 0)
-    {
-        *err_msg = "invalid permit";
-        return -1;
-    }
+        return intent_fail(err_msg, "invalid permit");
     if (intent_add_eq(&permit, INTENT_FIELD_ETH_TYPE, INTENT_ETH_P_IP, err_msg) != 0 ||
         intent_add_eq(&permit, INTENT_FIELD_IP_DST, dst_ip, err_msg) != 0 ||
         intent_add_proto_in_tcp_udp(&permit, err_msg) != 0 ||
@@ -320,10 +317,7 @@ static inline int intent_add_l4_permit(struct intent *intent,
 
     if (intent_parse_ipv4(ip, &dst_ip) != 0 ||
         intent_parse_port(port, &dst_port) != 0)
-    {
-        *err_msg = "invalid permit";
-        return -1;
-    }
+        return intent_fail(err_msg, "invalid permit");
     if (intent_add_eq(&permit, INTENT_FIELD_ETH_TYPE, INTENT_ETH_P_IP, err_msg) != 0 ||
         intent_add_eq(&permit, INTENT_FIELD_IP_DST, dst_ip, err_msg) != 0 ||
         intent_add_eq(&permit, INTENT_FIELD_IP_PROTO, proto, err_msg) != 0 ||
@@ -344,10 +338,7 @@ static inline int intent_add_permit(struct intent *intent,
     size_t arg_len = strlen(arg);
 
     if (arg_len >= sizeof(buf))
-    {
-        *err_msg = "permit too long";
-        return -1;
-    }
+        return intent_fail(err_msg, "permit too long");
 
     if (strcmp(arg, "arp") == 0)
         return intent_add_arp_permit(intent, err_msg);
@@ -356,29 +347,20 @@ static inline int intent_add_permit(struct intent *intent,
     kind = buf;
     target = strchr(kind, '/');
     if (!target)
-    {
-        *err_msg = "unsupported permit";
-        return -1;
-    }
+        return intent_fail(err_msg, "unsupported permit");
     *target++ = '\0';
 
     if (strcmp(kind, "dns") == 0)
     {
         if (strchr(target, ':'))
-        {
-            *err_msg = "invalid permit";
-            return -1;
-        }
+            return intent_fail(err_msg, "dns permits do not accept a port");
         return intent_add_dns_permit(intent, target, err_msg);
     }
     if (strcmp(kind, "tcp") == 0)
     {
         port = strrchr(target, ':');
         if (!port)
-        {
-            *err_msg = "invalid permit";
-            return -1;
-        }
+            return intent_fail(err_msg, "invalid permit");
         *port++ = '\0';
         return intent_add_l4_permit(intent, INTENT_IPPROTO_TCP, target, port, err_msg);
     }
@@ -386,16 +368,12 @@ static inline int intent_add_permit(struct intent *intent,
     {
         port = strrchr(target, ':');
         if (!port)
-        {
-            *err_msg = "invalid permit";
-            return -1;
-        }
+            return intent_fail(err_msg, "invalid permit");
         *port++ = '\0';
         return intent_add_l4_permit(intent, INTENT_IPPROTO_UDP, target, port, err_msg);
     }
 
-    *err_msg = "unsupported permit";
-    return -1;
+    return intent_fail(err_msg, "unsupported permit");
 }
 
 static inline int intent_permit_compare(const void *left, const void *right)
