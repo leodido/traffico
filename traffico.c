@@ -453,6 +453,11 @@ static int intent_dry_run(void)
         return 1;
     }
 
+    if (g_intent_explain)
+    {
+        intent_print_explain(g_config.out_stream, g_config.ifname, &g_intent);
+    }
+
     fprintf(g_config.out_stream, "intent dry-run: compiler ok\n");
     fprintf(g_config.out_stream, "intent backend: not implemented\n");
     return 0;
