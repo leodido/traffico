@@ -51,7 +51,7 @@ const char OPT_PERMIT_ARG[] = "PERMIT";
 const char OPT_DRY_RUN_LONG[] = "dry-run";
 #define OPT_EXPLAIN_KEY 0x86
 const char OPT_EXPLAIN_LONG[] = "explain";
-const char OPT_EXPLAIN_ARG[] = "intent|dag";
+const char OPT_EXPLAIN_ARG[] = "intent";
 
 const struct argp_option argp_opts[] = {
 
@@ -440,7 +440,7 @@ int await(struct bpf_tc_hook hook, struct bpf_tc_opts opts)
     return 0;
 }
 
-static int intent_dry_run(void)
+static int intent_validate(const char *context)
 {
     struct decision_dag dag = {0};
     const char *err_msg = NULL;
@@ -449,18 +449,45 @@ static int intent_dry_run(void)
     if (intent_build_dag(&g_intent, &dag, &err_msg) != 0 ||
         intent_validate_supported_subset(&dag, &err_msg) != 0)
     {
-        fprintf(g_config.err_stream, TOOL_NAME ": intent dry-run: %s\n", err_msg);
+        fprintf(g_config.err_stream, TOOL_NAME ": %s: %s\n", context, err_msg);
         return 1;
     }
 
+    return 0;
+}
+
+static void intent_explain(void)
+{
     if (g_intent_explain)
     {
         intent_print_explain(g_config.out_stream, g_config.ifname, &g_intent);
+        fflush(g_config.out_stream);
+    }
+}
+
+static int intent_dry_run(void)
+{
+    if (intent_validate("intent dry-run") != 0)
+    {
+        return 1;
     }
 
+    intent_explain();
     fprintf(g_config.out_stream, "intent dry-run: compiler ok\n");
     fprintf(g_config.out_stream, "intent backend: not implemented\n");
     return 0;
+}
+
+static int intent_reject_live_attach(void)
+{
+    if (intent_validate("intent attach") != 0)
+    {
+        return 1;
+    }
+
+    intent_explain();
+    fprintf(g_config.err_stream, TOOL_NAME ": intent attach backend is not implemented; use --dry-run\n");
+    return 1;
 }
 
 int main(int argc, char **argv)
@@ -482,8 +509,7 @@ int main(int argc, char **argv)
     }
     if (g_intent_mode)
     {
-        fprintf(g_config.err_stream, TOOL_NAME ": intent attach backend is not implemented; use --dry-run\n");
-        return 1;
+        return intent_reject_live_attach();
     }
 
     // Setup signal handling
