@@ -36,6 +36,13 @@ static inline bool intent_bpf_proto_supported(uint8_t proto)
     return proto == INTENT_IPPROTO_TCP || proto == INTENT_IPPROTO_UDP;
 }
 
+static inline bool intent_bpf_should_destroy_hook(bool cleanup_on_exit,
+                                                  bool hook_created,
+                                                  bool prog_attached)
+{
+    return hook_created && (cleanup_on_exit || !prog_attached);
+}
+
 static inline bool intent_bpf_rule_supported(const struct intent_enforcement_rule *rule)
 {
     if (rule->kind == INTENT_ENFORCEMENT_RULE_ARP)
