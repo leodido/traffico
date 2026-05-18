@@ -99,6 +99,22 @@ assert_intent_tc_cleanup() {
     [ "$output" = "" ]
 }
 
+@test "Intent live ingress rejection leaves TC untouched" {
+    run ip netns exec "${NETNS}" traffico -i "${PEER}" --at ingress --allow arp
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: intent currently supports --at egress only" ]
+
+    assert_intent_tc_cleanup
+}
+
+@test "Intent live invalid permit rejection leaves TC untouched" {
+    run ip netns exec "${NETNS}" traffico -i "${PEER}" --allow tcp/10.0.0.10
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: invalid permit: 'tcp/10.0.0.10'" ]
+
+    assert_intent_tc_cleanup
+}
+
 @test "--dry-run --explain prints deterministic intent" {
     run traffico -i lo --at egress \
         --allow udp/10.0.0.20:123 \
