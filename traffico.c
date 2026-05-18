@@ -215,15 +215,15 @@ static error_t parse_cli(int key, char *arg, struct argp_state *state)
     case ARGP_KEY_END:
         if (g_intent_mode && g_chain_arg)
         {
-            argp_error(state, "--allow and --chain are mutually exclusive");
+            argp_error(state, "--allow/--permit and --chain are mutually exclusive");
         }
         if (g_intent_mode && state->arg_num > 0)
         {
-            argp_error(state, "--allow and positional PROGRAM arguments are mutually exclusive");
+            argp_error(state, "--allow/--permit and positional PROGRAM arguments are mutually exclusive");
         }
         if (g_intent_dry_run && !g_intent_mode)
         {
-            argp_error(state, "--dry-run currently requires --allow");
+            argp_error(state, "--dry-run currently requires --allow or --permit");
         }
 
         // In chain or Intent mode, positional args are not required
