@@ -171,6 +171,20 @@ static int test_bpf_lowering_rejects_too_many_protos(void)
     return expect_unsupported_rule_rejected(&rule);
 }
 
+static int test_bpf_hook_cleanup_policy(void)
+{
+    CHECK(!intent_bpf_should_destroy_hook(true, false, false));
+    CHECK(!intent_bpf_should_destroy_hook(true, false, true));
+    CHECK(!intent_bpf_should_destroy_hook(false, false, false));
+    CHECK(!intent_bpf_should_destroy_hook(false, false, true));
+
+    CHECK(intent_bpf_should_destroy_hook(true, true, false));
+    CHECK(intent_bpf_should_destroy_hook(true, true, true));
+    CHECK(intent_bpf_should_destroy_hook(false, true, false));
+    CHECK(!intent_bpf_should_destroy_hook(false, true, true));
+    return 0;
+}
+
 int main(void)
 {
     RUN_TEST(test_bpf_lowering_preserves_correlated_rows);
@@ -181,6 +195,7 @@ int main(void)
     RUN_TEST(test_bpf_lowering_rejects_zero_proto_count);
     RUN_TEST(test_bpf_lowering_rejects_zero_l4_dst_port);
     RUN_TEST(test_bpf_lowering_rejects_too_many_protos);
+    RUN_TEST(test_bpf_hook_cleanup_policy);
     puts("intent bpf unit tests: ok");
     return 0;
 }
