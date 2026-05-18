@@ -7,6 +7,7 @@
 
 #include "intent.h"
 
+/* Validators recurse through a fixed-size userspace graph bounded here. */
 #define MAX_DECISION_NODES (MAX_INTENT_PERMITS * MAX_INTENT_PREDICATES)
 #define INTENT_SUBSET_CONTEXT_COUNT 4
 
@@ -19,6 +20,7 @@ enum decision_terminal
 
 struct decision_edge
 {
+    /* When terminal is not NONE, node must stay zero. */
     size_t node;
     enum decision_terminal terminal;
 };
@@ -35,6 +37,10 @@ struct decision_dag
 {
     enum intent_direction direction;
     size_t root;
+    /*
+     * At current limits this array is about 15 KiB. Keep decision_dag on the
+     * userspace stack or in static storage, never on a BPF/kernel stack.
+     */
     struct decision_node nodes[MAX_DECISION_NODES];
     size_t node_count;
 };
@@ -157,6 +163,11 @@ static inline int intent_validate_edge(const struct decision_dag *dag,
         return 0;
     case DECISION_TERMINAL_ALLOW:
     case DECISION_TERMINAL_DROP:
+        if (edge->node != 0)
+        {
+            *err_msg = "Decision DAG terminal edge target must be empty";
+            return -1;
+        }
         return 0;
     default:
         *err_msg = "Decision DAG edge has invalid terminal";
@@ -326,6 +337,10 @@ static inline bool intent_predicate_is_supported_l4_proto(const struct intent_pr
 
 static inline bool intent_predicate_in_supported_subset(const struct intent_predicate *predicate)
 {
+    /*
+     * First backend-neutral subset accepted by the DDAG builder. Extend this
+     * deliberately when the Intent lowering and backend admissibility grow.
+     */
     if (predicate->field == INTENT_FIELD_ETH_TYPE)
     {
         if (predicate->op != INTENT_OP_EQ ||
@@ -414,6 +429,7 @@ static inline int intent_validate_supported_path(const struct decision_dag *dag,
 
     if (memo[node_index][context_index] == 1)
     {
+        /* Defense-in-depth: the public entrypoint validates acyclicity first. */
         *err_msg = "Decision DAG must be acyclic";
         return -1;
     }
