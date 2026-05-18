@@ -44,7 +44,10 @@ const char OPT_CHAIN_ARG[] = "PROG:INPUT,...";
 #define OPT_ALLOW_KEY 0x83
 const char OPT_ALLOW_LONG[] = "allow";
 const char OPT_ALLOW_ARG[] = "PERMIT";
-#define OPT_DRY_RUN_KEY 0x84
+#define OPT_PERMIT_KEY 0x84
+const char OPT_PERMIT_LONG[] = "permit";
+const char OPT_PERMIT_ARG[] = "PERMIT";
+#define OPT_DRY_RUN_KEY 0x85
 const char OPT_DRY_RUN_LONG[] = "dry-run";
 
 const struct argp_option argp_opts[] = {
@@ -56,6 +59,7 @@ const struct argp_option argp_opts[] = {
     {OPT_NO_CLEANUP_LONG, OPT_NO_CLEANUP_KEY, NULL, 0, "Do not detach the TC hook and filter at the exit", 1},
     {OPT_CHAIN_LONG, OPT_CHAIN_KEY, OPT_CHAIN_ARG, 0, "Attach a chain of programs (e.g., allow_ipv4:10.0.0.1,allow_port:8080)", 1},
     {OPT_ALLOW_LONG, OPT_ALLOW_KEY, OPT_ALLOW_ARG, 0, "Add an Intent permit", 1},
+    {OPT_PERMIT_LONG, OPT_PERMIT_KEY, OPT_PERMIT_ARG, 0, "Alias for --allow", 1},
     {OPT_DRY_RUN_LONG, OPT_DRY_RUN_KEY, NULL, 0, "Validate Intent without attaching", 1},
     {"", 0, 0, OPTION_DOC, 0, 0},
     {0} // .
@@ -170,6 +174,7 @@ static error_t parse_cli(int key, char *arg, struct argp_state *state)
         g_chain_arg = arg;
         break;
     case OPT_ALLOW_KEY:
+    case OPT_PERMIT_KEY:
         g_intent_mode = true;
         if (intent_add_permit(&g_intent, arg, &err_msg) != 0)
         {
