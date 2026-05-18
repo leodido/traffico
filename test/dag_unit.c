@@ -163,6 +163,25 @@ static int test_decision_dag_rejects_cycles_on_any_edge(void)
     return 0;
 }
 
+static int test_decision_dag_rejects_unreachable_nodes(void)
+{
+    struct intent intent = {0};
+    struct decision_dag dag = {0};
+    const char *err = NULL;
+
+    intent_init(&intent, INTENT_DIRECTION_EGRESS);
+    CHECK(intent_add_permit(&intent, "arp", &err) == 0);
+    CHECK(intent_build_dag(&intent, &dag, &err) == 0);
+
+    dag.node_count = 2;
+    dag.nodes[1] = dag.nodes[0];
+
+    CHECK(intent_validate_dag(&dag, &err) == -1);
+    CHECK(strcmp(err, "Decision DAG node is unreachable") == 0);
+
+    return 0;
+}
+
 static int test_decision_dag_allows_unordered_acyclic_edges(void)
 {
     struct intent intent = {0};
@@ -186,6 +205,26 @@ static int test_decision_dag_allows_unordered_acyclic_edges(void)
     return 0;
 }
 
+static int test_decision_dag_rejects_invalid_root_and_empty_dag(void)
+{
+    struct intent intent = {0};
+    struct decision_dag dag = {0};
+    const char *err = NULL;
+
+    CHECK(intent_validate_dag(&dag, &err) == -1);
+    CHECK(strcmp(err, "Decision DAG is empty") == 0);
+
+    intent_init(&intent, INTENT_DIRECTION_EGRESS);
+    CHECK(intent_add_permit(&intent, "arp", &err) == 0);
+    CHECK(intent_build_dag(&intent, &dag, &err) == 0);
+
+    dag.root = dag.node_count;
+    CHECK(intent_validate_dag(&dag, &err) == -1);
+    CHECK(strcmp(err, "Decision DAG root is invalid") == 0);
+
+    return 0;
+}
+
 static int test_decision_dag_rejects_invalid_direction(void)
 {
     struct intent intent = {0};
@@ -199,6 +238,40 @@ static int test_decision_dag_rejects_invalid_direction(void)
     dag.direction = (enum intent_direction)99;
     CHECK(intent_validate_dag(&dag, &err) == -1);
     CHECK(strcmp(err, "Decision DAG direction is invalid") == 0);
+
+    return 0;
+}
+
+static int test_decision_dag_rejects_invalid_edge_targets(void)
+{
+    struct intent intent = {0};
+    struct decision_dag dag = {0};
+    const char *err = NULL;
+
+    intent_init(&intent, INTENT_DIRECTION_EGRESS);
+    CHECK(intent_add_permit(&intent, "arp", &err) == 0);
+    CHECK(intent_build_dag(&intent, &dag, &err) == 0);
+
+    dag.nodes[0].on_false = decision_edge_node(dag.node_count);
+    CHECK(intent_validate_dag(&dag, &err) == -1);
+    CHECK(strcmp(err, "Decision DAG edge target is invalid") == 0);
+
+    return 0;
+}
+
+static int test_decision_dag_rejects_non_drop_error_edges(void)
+{
+    struct intent intent = {0};
+    struct decision_dag dag = {0};
+    const char *err = NULL;
+
+    intent_init(&intent, INTENT_DIRECTION_EGRESS);
+    CHECK(intent_add_permit(&intent, "arp", &err) == 0);
+    CHECK(intent_build_dag(&intent, &dag, &err) == 0);
+
+    dag.nodes[0].on_error = decision_edge_terminal(DECISION_TERMINAL_ALLOW);
+    CHECK(intent_validate_dag(&dag, &err) == -1);
+    CHECK(strcmp(err, "Decision DAG error edge must drop") == 0);
 
     return 0;
 }
@@ -270,8 +343,12 @@ int main(void)
     RUN_TEST(test_decision_dag_rejects_invalid_public_counts);
     RUN_TEST(test_decision_dag_validates_max_permit_set);
     RUN_TEST(test_decision_dag_rejects_cycles_on_any_edge);
+    RUN_TEST(test_decision_dag_rejects_unreachable_nodes);
     RUN_TEST(test_decision_dag_allows_unordered_acyclic_edges);
+    RUN_TEST(test_decision_dag_rejects_invalid_root_and_empty_dag);
     RUN_TEST(test_decision_dag_rejects_invalid_direction);
+    RUN_TEST(test_decision_dag_rejects_invalid_edge_targets);
+    RUN_TEST(test_decision_dag_rejects_non_drop_error_edges);
     RUN_TEST(test_decision_dag_rejects_unsupported_subset_predicates);
     RUN_TEST(test_decision_dag_rejects_unguarded_l4_port_predicates);
     RUN_TEST(test_decision_dag_rejects_unguarded_ip_predicates);
