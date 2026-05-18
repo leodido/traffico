@@ -169,6 +169,35 @@ static inline int intent_validate_acyclic_path(const struct decision_dag *dag,
                                                uint8_t colors[MAX_DECISION_NODES],
                                                const char **err_msg);
 
+static inline void intent_mark_reachable_path(const struct decision_dag *dag,
+                                              size_t node_index,
+                                              uint8_t reachable[MAX_DECISION_NODES]);
+
+static inline void intent_mark_reachable_edge(const struct decision_dag *dag,
+                                              const struct decision_edge *edge,
+                                              uint8_t reachable[MAX_DECISION_NODES])
+{
+    if (edge->terminal != DECISION_TERMINAL_NONE)
+        return;
+
+    intent_mark_reachable_path(dag, edge->node, reachable);
+}
+
+static inline void intent_mark_reachable_path(const struct decision_dag *dag,
+                                              size_t node_index,
+                                              uint8_t reachable[MAX_DECISION_NODES])
+{
+    const struct decision_node *node = &dag->nodes[node_index];
+
+    if (reachable[node_index])
+        return;
+
+    reachable[node_index] = 1;
+    intent_mark_reachable_edge(dag, &node->on_true, reachable);
+    intent_mark_reachable_edge(dag, &node->on_false, reachable);
+    intent_mark_reachable_edge(dag, &node->on_error, reachable);
+}
+
 static inline int intent_validate_acyclic_edge(const struct decision_dag *dag,
                                                const struct decision_edge *edge,
                                                uint8_t colors[MAX_DECISION_NODES],
@@ -208,6 +237,7 @@ static inline int intent_validate_acyclic_path(const struct decision_dag *dag,
 static inline int intent_validate_dag(const struct decision_dag *dag,
                                       const char **err_msg)
 {
+    uint8_t reachable[MAX_DECISION_NODES] = {0};
     uint8_t colors[MAX_DECISION_NODES] = {0};
 
     if (dag->node_count == 0)
@@ -244,6 +274,16 @@ static inline int intent_validate_dag(const struct decision_dag *dag,
             intent_validate_edge(dag, &node->on_false, err_msg) != 0 ||
             intent_validate_edge(dag, &node->on_error, err_msg) != 0)
             return -1;
+    }
+
+    intent_mark_reachable_path(dag, dag->root, reachable);
+    for (size_t i = 0; i < dag->node_count; i++)
+    {
+        if (!reachable[i])
+        {
+            *err_msg = "Decision DAG node is unreachable";
+            return -1;
+        }
     }
 
     for (size_t i = 0; i < dag->node_count; i++)
