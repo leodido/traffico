@@ -456,12 +456,12 @@ static int intent_validate(const char *context)
     return 0;
 }
 
-static void intent_explain(void)
+static void intent_explain(FILE *out)
 {
     if (g_intent_explain)
     {
-        intent_print_explain(g_config.out_stream, g_config.ifname, &g_intent);
-        fflush(g_config.out_stream);
+        intent_print_explain(out, g_config.ifname, &g_intent);
+        fflush(out);
     }
 }
 
@@ -472,7 +472,7 @@ static int intent_dry_run(void)
         return 1;
     }
 
-    intent_explain();
+    intent_explain(g_config.out_stream);
     fprintf(g_config.out_stream, "intent dry-run: compiler ok\n");
     fprintf(g_config.out_stream, "intent backend: not implemented\n");
     return 0;
@@ -485,7 +485,7 @@ static int intent_reject_live_attach(void)
         return 1;
     }
 
-    intent_explain();
+    intent_explain(g_config.err_stream);
     fprintf(g_config.err_stream, TOOL_NAME ": intent attach backend is not implemented; use --dry-run\n");
     return 1;
 }

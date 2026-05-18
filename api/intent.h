@@ -516,11 +516,12 @@ static inline void intent_format_ip(uint32_t ip, char *buf, size_t len)
     inet_ntop(AF_INET, &addr, buf, len);
 }
 
-static inline int intent_print_explain(FILE *out,
-                                       const char *ifname,
-                                       const struct intent *intent)
+static inline void intent_print_explain(FILE *out,
+                                        const char *ifname,
+                                        const struct intent *intent)
 {
     char ip[INET_ADDRSTRLEN];
+    bool has_l4_permits = false;
 
     fprintf(out, "traffico intent\n");
     fprintf(out, "interface: %s\n", ifname);
@@ -551,6 +552,7 @@ static inline int intent_print_explain(FILE *out,
             intent_permit_has_proto_in_tcp_udp(permit) &&
             port == INTENT_DNS_PORT)
         {
+            has_l4_permits = true;
             intent_format_ip(ip_dst, ip, sizeof(ip));
             fprintf(out, "  %zu. DNS to %s over TCP or UDP destination port 53\n",
                     i + 1,
@@ -565,6 +567,7 @@ static inline int intent_print_explain(FILE *out,
             intent_permit_get_eq(permit, INTENT_FIELD_L4_DST_PORT, &port) &&
             proto == INTENT_IPPROTO_TCP)
         {
+            has_l4_permits = true;
             intent_format_ip(ip_dst, ip, sizeof(ip));
             fprintf(out, "  %zu. TCP to %s destination port %u\n",
                     i + 1,
@@ -580,6 +583,7 @@ static inline int intent_print_explain(FILE *out,
             intent_permit_get_eq(permit, INTENT_FIELD_L4_DST_PORT, &port) &&
             proto == INTENT_IPPROTO_UDP)
         {
+            has_l4_permits = true;
             intent_format_ip(ip_dst, ip, sizeof(ip));
             fprintf(out, "  %zu. UDP to %s destination port %u\n",
                     i + 1,
@@ -593,9 +597,9 @@ static inline int intent_print_explain(FILE *out,
 
     fprintf(out, "\ndropped traffic:\n");
     fprintf(out, "  - malformed packets that cannot be safely classified\n");
-    fprintf(out, "  - TCP/UDP fragments whose destination port cannot be checked\n");
+    if (has_l4_permits)
+        fprintf(out, "  - TCP/UDP fragments whose destination port cannot be checked\n");
     fprintf(out, "  - any traffic not matching a permit\n");
-    return 0;
 }
 
 #endif
