@@ -4,10 +4,36 @@ load helpers
 export BATS_TEST_NAME_PREFIX=$(setsuite)
 bats_require_minimum_version 1.7.0
 
+setup() {
+    load net
+    NETNS="ns$((RANDOM % 10))"
+    new_netns "${NETNS}"
+    setup_net "${NETNS}"
+}
+
+teardown() {
+    killall traffico &>/dev/null || true
+    del_netdev
+    del_netns "${NETNS}"
+}
+
 @test "Intent live attach is rejected until backend is implemented" {
     run traffico -i lo --at egress --allow arp
     [ $status -eq 1 ]
     [ "${lines[0]}" == "traffico: intent attach backend is not implemented; use --dry-run" ]
+}
+
+@test "--dry-run validates Intent without attaching" {
+    run ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress \
+        --allow arp \
+        --allow "tcp/${VETH_ADDR}:443" \
+        --dry-run
+    [ $status -eq 0 ]
+    [[ "$output" == *"intent dry-run: compiler ok"* ]]
+    [[ "$output" == *"intent backend: not implemented"* ]]
+
+    run ip netns exec "${NETNS}" tc qdisc show dev "${PEER}" clsact
+    [ "$output" = "" ]
 }
 
 @test "--dry-run --explain prints deterministic intent" {
