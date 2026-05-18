@@ -65,6 +65,12 @@ bats_require_minimum_version 1.7.0
     [ "${lines[0]}" == "traffico: unsupported --explain mode: 'dag'" ]
 }
 
+@test "Intent mode rejects ingress until designed" {
+    run traffico -i lo --at ingress --allow arp --dry-run
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: intent currently supports --at egress only" ]
+}
+
 @test "invalid option" {
     run traffico -x
     [ ! $status -eq 0 ]
