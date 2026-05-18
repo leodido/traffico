@@ -62,6 +62,36 @@ static int test_decision_dag_builds_predicate_chain(void)
     return 0;
 }
 
+static int test_decision_dag_chains_three_permit_false_edges(void)
+{
+    struct intent intent = {0};
+    struct decision_dag dag = {0};
+    const char *err = NULL;
+
+    intent_init(&intent, INTENT_DIRECTION_EGRESS);
+    CHECK(intent_add_permit(&intent, "arp", &err) == 0);
+    CHECK(intent_add_permit(&intent, "tcp/10.0.0.10:443", &err) == 0);
+    CHECK(intent_add_permit(&intent, "udp/10.0.0.20:123", &err) == 0);
+    intent_normalize(&intent);
+
+    CHECK(intent_build_dag(&intent, &dag, &err) == 0);
+    CHECK(dag.node_count == 9);
+
+    CHECK(dag.nodes[0].on_false.terminal == DECISION_TERMINAL_NONE);
+    CHECK(dag.nodes[0].on_false.node == 1);
+    CHECK(dag.nodes[1].on_false.terminal == DECISION_TERMINAL_NONE);
+    CHECK(dag.nodes[1].on_false.node == 5);
+    CHECK(dag.nodes[4].on_false.terminal == DECISION_TERMINAL_NONE);
+    CHECK(dag.nodes[4].on_false.node == 5);
+    CHECK(dag.nodes[5].on_false.terminal == DECISION_TERMINAL_DROP);
+    CHECK(dag.nodes[8].on_false.terminal == DECISION_TERMINAL_DROP);
+
+    CHECK(intent_validate_dag(&dag, &err) == 0);
+    CHECK(intent_validate_supported_subset(&dag, &err) == 0);
+
+    return 0;
+}
+
 static int test_decision_dag_rejects_future_forbids(void)
 {
     struct intent intent = {0};
@@ -259,6 +289,23 @@ static int test_decision_dag_rejects_invalid_edge_targets(void)
     return 0;
 }
 
+static int test_decision_dag_rejects_terminal_edges_with_targets(void)
+{
+    struct intent intent = {0};
+    struct decision_dag dag = {0};
+    const char *err = NULL;
+
+    intent_init(&intent, INTENT_DIRECTION_EGRESS);
+    CHECK(intent_add_permit(&intent, "arp", &err) == 0);
+    CHECK(intent_build_dag(&intent, &dag, &err) == 0);
+
+    dag.nodes[0].on_true.node = 1;
+    CHECK(intent_validate_dag(&dag, &err) == -1);
+    CHECK(strcmp(err, "Decision DAG terminal edge target must be empty") == 0);
+
+    return 0;
+}
+
 static int test_decision_dag_rejects_non_drop_error_edges(void)
 {
     struct intent intent = {0};
@@ -338,6 +385,7 @@ static int test_decision_dag_rejects_unguarded_ip_predicates(void)
 int main(void)
 {
     RUN_TEST(test_decision_dag_builds_predicate_chain);
+    RUN_TEST(test_decision_dag_chains_three_permit_false_edges);
     RUN_TEST(test_decision_dag_rejects_future_forbids);
     RUN_TEST(test_decision_dag_rejects_non_drop_default_action);
     RUN_TEST(test_decision_dag_rejects_invalid_public_counts);
@@ -348,6 +396,7 @@ int main(void)
     RUN_TEST(test_decision_dag_rejects_invalid_root_and_empty_dag);
     RUN_TEST(test_decision_dag_rejects_invalid_direction);
     RUN_TEST(test_decision_dag_rejects_invalid_edge_targets);
+    RUN_TEST(test_decision_dag_rejects_terminal_edges_with_targets);
     RUN_TEST(test_decision_dag_rejects_non_drop_error_edges);
     RUN_TEST(test_decision_dag_rejects_unsupported_subset_predicates);
     RUN_TEST(test_decision_dag_rejects_unguarded_l4_port_predicates);
