@@ -40,6 +40,13 @@ target("intent-ir-unit")
     add_files({ "test/intent_unit.c" }, { languages = { "c11" }})
 target_end()
 
+target("dag-unit")
+    set_kind("binary")
+    set_default(false)
+    add_includedirs(".")
+    add_files({ "test/dag_unit.c" }, { languages = { "c11" }})
+target_end()
+
 target("test")
     set_kind("phony")
     add_packages("bats", "mini_httpd")
@@ -51,16 +58,19 @@ target("test")
         local selected_test_paths = 0
         if #selected == 0 then
             table.insert(bats_args, "test/")
-            build_targets = {"traffico", "traffico-cni", "intent-ir-unit"}
+            build_targets = {"traffico", "traffico-cni", "intent-ir-unit", "dag-unit"}
         else
             local needs_full_suite_targets = false
             local needs_intent_ir_unit = false
+            local needs_dag_unit = false
             for _, arg in ipairs(selected) do
                 table.insert(bats_args, arg)
                 if arg == "test" or arg == "test/" or arg:find("%.bats$") then
                     selected_test_paths = selected_test_paths + 1
                     if arg:find("intent_unit", 1, true) then
                         needs_intent_ir_unit = true
+                    elseif arg:find("dag_unit", 1, true) then
+                        needs_dag_unit = true
                     else
                         needs_full_suite_targets = true
                     end
@@ -68,11 +78,16 @@ target("test")
             end
             if selected_test_paths == 0 then
                 table.insert(bats_args, "test/")
-                build_targets = {"traffico", "traffico-cni", "intent-ir-unit"}
+                build_targets = {"traffico", "traffico-cni", "intent-ir-unit", "dag-unit"}
             elseif needs_full_suite_targets then
-                build_targets = {"traffico", "traffico-cni", "intent-ir-unit"}
-            elseif needs_intent_ir_unit then
-                build_targets = {"intent-ir-unit"}
+                build_targets = {"traffico", "traffico-cni", "intent-ir-unit", "dag-unit"}
+            else
+                if needs_intent_ir_unit then
+                    table.insert(build_targets, "intent-ir-unit")
+                end
+                if needs_dag_unit then
+                    table.insert(build_targets, "dag-unit")
+                end
             end
         end
         for _, name in ipairs(build_targets) do
