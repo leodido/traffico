@@ -35,6 +35,24 @@ bats_require_minimum_version 1.7.0
     [[ "$output" == *"intent backend: not implemented"* ]]
 }
 
+@test "--allow and --chain are mutually exclusive" {
+    run traffico -i lo --allow arp --chain "allow_ethertype:arp" --dry-run
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: --allow/--permit and --chain are mutually exclusive" ]
+}
+
+@test "--allow and positional program are mutually exclusive" {
+    run traffico -i lo --allow arp nop --dry-run
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: --allow/--permit and positional PROGRAM arguments are mutually exclusive" ]
+}
+
+@test "--dry-run requires Intent mode" {
+    run traffico -i lo --dry-run nop
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: --dry-run currently requires --allow or --permit" ]
+}
+
 @test "invalid option" {
     run traffico -x
     [ ! $status -eq 0 ]
