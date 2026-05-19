@@ -84,10 +84,62 @@ traffico --ifname=eth0 --at=EGRESS --chain \
 
 These examples are alternative linear policies, not an additive multi-flow
 allowlist. Full policies such as "DNS to resolver OR HTTPS to service" need
-explicit OR composition.
+Intent mode.
 
 Chain order is validated before attach. If a chain contains any L3/L4 program,
 slot 0 must be `allow_ethertype`, and the layer order must be `L2 -> L3 -> L4`.
+
+#### Intent mode
+
+Use Intent mode when the policy is an additive allowlist such as "ARP OR DNS to
+this resolver OR HTTPS to this service". Intent mode is selected by repeating
+`--allow` or `--permit`; `--permit` is an alias for `--allow`.
+
+Supported selectors:
+
+- `arp`
+- `dns/IPv4`
+- `tcp/IPv4:PORT`
+- `udp/IPv4:PORT`
+
+`dns/IPv4` permits DNS to that IPv4 resolver over TCP or UDP destination port
+53. TCP and UDP selectors match packets whose destination endpoint is
+`IPv4:PORT`. Any traffic not matching a permit is dropped, and packets that
+cannot be safely classified are dropped.
+
+```bash
+traffico --ifname=eth0 --at=EGRESS \
+  --allow arp \
+  --allow dns/10.0.0.53 \
+  --allow tcp/10.0.0.10:443 \
+  --allow udp/10.0.0.20:123
+```
+
+Use `--dry-run` to compile and validate without attaching:
+
+```bash
+traffico --ifname=eth0 --at=EGRESS \
+  --allow arp \
+  --allow tcp/10.0.0.10:443 \
+  --dry-run
+```
+
+Use `--explain` to print the normalized Intent before validation succeeds or
+fails:
+
+```bash
+traffico --ifname=eth0 --at=EGRESS \
+  --allow udp/10.0.0.20:123 \
+  --allow arp \
+  --allow tcp/10.0.0.10:443 \
+  --allow dns/10.0.0.53 \
+  --dry-run --explain
+```
+
+Intent mode is mutually exclusive with `--chain` and with positional
+`PROGRAM [INPUT]`. The first Intent backend is the Linux BPF egress adapter.
+`--at=INGRESS` is parsed and can be explained, but backend validation rejects
+it until an ingress backend is implemented.
 
 ### traffico-cni
 
