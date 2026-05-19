@@ -9,7 +9,7 @@
 
 /* Validators recurse through a fixed-size userspace graph bounded here. */
 #define MAX_DECISION_NODES (MAX_INTENT_PERMITS * MAX_INTENT_PREDICATES)
-#define INTENT_SUBSET_CONTEXT_COUNT 4
+#define INTENT_SUBSET_CONTEXT_COUNT 32
 
 enum decision_terminal
 {
@@ -68,44 +68,23 @@ static inline int intent_build_dag(const struct intent *intent,
     size_t node_count = 0;
 
     if (intent->permit_count == 0)
-    {
-        *err_msg = "at least one permit is required";
-        return -1;
-    }
+        return intent_fail(err_msg, "at least one permit is required");
     if (intent->permit_count > MAX_INTENT_PERMITS)
-    {
-        *err_msg = "too many permits";
-        return -1;
-    }
+        return intent_fail(err_msg, "too many permits");
     if (intent->default_action != INTENT_ACTION_DROP)
-    {
-        *err_msg = "default action must drop";
-        return -1;
-    }
+        return intent_fail(err_msg, "default action must drop");
     if (intent->forbid_count != 0)
-    {
-        *err_msg = "forbids are not supported yet";
-        return -1;
-    }
+        return intent_fail(err_msg, "forbids are not supported yet");
 
     for (size_t i = 0; i < intent->permit_count; i++)
     {
         const struct intent_permit *permit = &intent->permits[i];
         if (permit->predicate_count == 0)
-        {
-            *err_msg = "permit has no predicates";
-            return -1;
-        }
+            return intent_fail(err_msg, "permit has no predicates");
         if (permit->predicate_count > MAX_INTENT_PREDICATES)
-        {
-            *err_msg = "invalid permit";
-            return -1;
-        }
+            return intent_fail(err_msg, "invalid permit");
         if (permit->predicate_count > MAX_DECISION_NODES - node_count)
-        {
-            *err_msg = "Decision DAG exceeds node limit";
-            return -1;
-        }
+            return intent_fail(err_msg, "Decision DAG exceeds node limit");
         permit_starts[i] = node_count;
         node_count += permit->predicate_count;
     }
@@ -117,8 +96,8 @@ static inline int intent_build_dag(const struct intent *intent,
 
     /*
      * Each permit lowers to one linear predicate chain.
-     * A false predicate falls through to the next permit chain.
-     * The last permit false edge targets terminal DROP.
+     * Every false predicate edge in non-last permits enters the next chain.
+     * Every false predicate edge in the last permit targets terminal DROP.
      * Shared prefixes are intentionally not merged yet.
      */
     for (size_t i = 0; i < intent->permit_count; i++)
@@ -162,22 +141,15 @@ static inline int intent_validate_edge(const struct decision_dag *dag,
     {
     case DECISION_TERMINAL_NONE:
         if (edge->node >= dag->node_count)
-        {
-            *err_msg = "Decision DAG edge target is invalid";
-            return -1;
-        }
+            return intent_fail(err_msg, "Decision DAG edge target is invalid");
         return 0;
     case DECISION_TERMINAL_ALLOW:
     case DECISION_TERMINAL_DROP:
         if (edge->node != 0)
-        {
-            *err_msg = "Decision DAG terminal edge target must be empty";
-            return -1;
-        }
+            return intent_fail(err_msg, "Decision DAG terminal edge target must be empty");
         return 0;
     default:
-        *err_msg = "Decision DAG edge has invalid terminal";
-        return -1;
+        return intent_fail(err_msg, "Decision DAG edge has invalid terminal");
     }
 }
 
@@ -234,10 +206,7 @@ static inline int intent_validate_acyclic_path(const struct decision_dag *dag,
     const struct decision_node *node = &dag->nodes[node_index];
 
     if (colors[node_index] == 1)
-    {
-        *err_msg = "Decision DAG must be acyclic";
-        return -1;
-    }
+        return intent_fail(err_msg, "Decision DAG must be acyclic");
     if (colors[node_index] == 2)
         return 0;
 
@@ -258,35 +227,20 @@ static inline int intent_validate_dag(const struct decision_dag *dag,
     uint8_t colors[MAX_DECISION_NODES] = {0};
 
     if (dag->node_count == 0)
-    {
-        *err_msg = "Decision DAG is empty";
-        return -1;
-    }
+        return intent_fail(err_msg, "Decision DAG is empty");
     if (dag->node_count > MAX_DECISION_NODES)
-    {
-        *err_msg = "Decision DAG node count is invalid";
-        return -1;
-    }
+        return intent_fail(err_msg, "Decision DAG node count is invalid");
     if (dag->root >= dag->node_count)
-    {
-        *err_msg = "Decision DAG root is invalid";
-        return -1;
-    }
+        return intent_fail(err_msg, "Decision DAG root is invalid");
     if (!intent_direction_is_valid(dag->direction))
-    {
-        *err_msg = "Decision DAG direction is invalid";
-        return -1;
-    }
+        return intent_fail(err_msg, "Decision DAG direction is invalid");
 
     for (size_t i = 0; i < dag->node_count; i++)
     {
         const struct decision_node *node = &dag->nodes[i];
 
         if (node->on_error.terminal != DECISION_TERMINAL_DROP)
-        {
-            *err_msg = "Decision DAG error edge must drop";
-            return -1;
-        }
+            return intent_fail(err_msg, "Decision DAG error edge must drop");
         if (intent_validate_edge(dag, &node->on_true, err_msg) != 0 ||
             intent_validate_edge(dag, &node->on_false, err_msg) != 0 ||
             intent_validate_edge(dag, &node->on_error, err_msg) != 0)
@@ -297,10 +251,7 @@ static inline int intent_validate_dag(const struct decision_dag *dag,
     for (size_t i = 0; i < dag->node_count; i++)
     {
         if (!reachable[i])
-        {
-            *err_msg = "Decision DAG node is unreachable";
-            return -1;
-        }
+            return intent_fail(err_msg, "Decision DAG node is unreachable");
     }
 
     for (size_t i = 0; i < dag->node_count; i++)
@@ -387,6 +338,14 @@ static inline bool intent_predicate_is_ipv4_guard(const struct intent_predicate 
            predicate->values.values[0] == INTENT_ETH_P_IP;
 }
 
+static inline bool intent_predicate_is_arp_guard(const struct intent_predicate *predicate)
+{
+    return predicate->field == INTENT_FIELD_ETH_TYPE &&
+           predicate->op == INTENT_OP_EQ &&
+           intent_predicate_has_single_value(predicate) &&
+           predicate->values.values[0] == INTENT_ETH_P_ARP;
+}
+
 static inline bool intent_predicate_is_l4_proto_guard(const struct intent_predicate *predicate)
 {
     return intent_predicate_is_supported_l4_proto(predicate);
@@ -395,14 +354,30 @@ static inline bool intent_predicate_is_l4_proto_guard(const struct intent_predic
 struct intent_subset_context
 {
     /* These guards are known only on the current true path. */
+    bool has_arp;
     bool has_ipv4;
+    bool has_ip_dst;
     bool has_l4_proto;
+    bool has_l4_dst_port;
 };
 
 static inline size_t intent_subset_context_index(struct intent_subset_context context)
 {
-    return (context.has_ipv4 ? 1U : 0U) |
-           (context.has_l4_proto ? 2U : 0U);
+    return (context.has_arp ? 1U : 0U) |
+           (context.has_ipv4 ? 2U : 0U) |
+           (context.has_ip_dst ? 4U : 0U) |
+           (context.has_l4_proto ? 8U : 0U) |
+           (context.has_l4_dst_port ? 16U : 0U);
+}
+
+static inline bool intent_subset_context_allows_terminal(struct intent_subset_context context)
+{
+    bool has_l4_service = context.has_ipv4 &&
+                          context.has_ip_dst &&
+                          context.has_l4_proto &&
+                          context.has_l4_dst_port;
+
+    return context.has_arp || has_l4_service;
 }
 
 static inline int intent_validate_supported_path(const struct decision_dag *dag,
@@ -418,7 +393,12 @@ static inline int intent_validate_supported_edge(const struct decision_dag *dag,
                                                  const char **err_msg)
 {
     if (edge->terminal != DECISION_TERMINAL_NONE)
+    {
+        if (edge->terminal == DECISION_TERMINAL_ALLOW &&
+            !intent_subset_context_allows_terminal(context))
+            return intent_fail(err_msg, "Decision DAG allow path is outside the first supported subset");
         return 0;
+    }
 
     return intent_validate_supported_path(dag, edge->node, context, memo, err_msg);
 }
@@ -440,38 +420,34 @@ static inline int intent_validate_supported_path(const struct decision_dag *dag,
          * The public entrypoint validates acyclicity first.
          * Keep this check because tests call the helper through crafted DAGs.
          */
-        *err_msg = "Decision DAG must be acyclic";
-        return -1;
+        return intent_fail(err_msg, "Decision DAG must be acyclic");
     }
     if (memo[node_index][context_index] == 2)
         return 0;
 
     memo[node_index][context_index] = 1;
     if (!intent_predicate_in_supported_subset(predicate))
-    {
-        *err_msg = "Decision DAG predicate is outside the first supported subset";
-        return -1;
-    }
+        return intent_fail(err_msg, "Decision DAG predicate is outside the first supported subset");
 
     if ((predicate->field == INTENT_FIELD_IP_DST ||
          predicate->field == INTENT_FIELD_IP_PROTO) &&
         !context.has_ipv4)
-    {
-        *err_msg = "Decision DAG IP predicate is unguarded";
-        return -1;
-    }
+        return intent_fail(err_msg, "Decision DAG IP predicate is unguarded");
 
     if (predicate->field == INTENT_FIELD_L4_DST_PORT &&
         (!context.has_ipv4 || !context.has_l4_proto))
-    {
-        *err_msg = "Decision DAG port predicate is unguarded";
-        return -1;
-    }
+        return intent_fail(err_msg, "Decision DAG port predicate is unguarded");
 
+    if (intent_predicate_is_arp_guard(predicate))
+        true_context.has_arp = true;
     if (intent_predicate_is_ipv4_guard(predicate))
         true_context.has_ipv4 = true;
+    if (predicate->field == INTENT_FIELD_IP_DST)
+        true_context.has_ip_dst = true;
     if (intent_predicate_is_l4_proto_guard(predicate))
         true_context.has_l4_proto = true;
+    if (predicate->field == INTENT_FIELD_L4_DST_PORT)
+        true_context.has_l4_dst_port = true;
 
     if (intent_validate_supported_edge(dag, &node->on_true, true_context, memo, err_msg) != 0 ||
         intent_validate_supported_edge(dag, &node->on_false, context, memo, err_msg) != 0 ||
