@@ -39,6 +39,21 @@ teardown() {
     [ "$output" = "" ]
 }
 
+@test "--dry-run does not require an attach interface" {
+    run ip netns exec "${NETNS}" ip route del default
+    [ $status -eq 0 ]
+
+    run ip netns exec "${NETNS}" traffico --at egress \
+        --allow arp \
+        --dry-run --explain
+    [ $status -eq 0 ]
+    [ "${lines[1]}" == "interface: not attached" ]
+    [[ "$output" == *"intent dry-run: compiler ok"* ]]
+
+    run ip netns exec "${NETNS}" tc qdisc show dev "${PEER}" clsact
+    [ "$output" = "" ]
+}
+
 @test "--dry-run --explain prints deterministic intent" {
     run traffico -i lo --at egress \
         --allow udp/10.0.0.20:123 \
