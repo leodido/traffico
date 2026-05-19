@@ -523,6 +523,10 @@ static inline void intent_print_explain(FILE *out,
     char ip[INET_ADDRSTRLEN];
     bool has_l4_permits = false;
 
+    /*
+     * The caller passes a normalized Intent.
+     * That keeps explain output stable across CLI input order.
+     */
     fprintf(out, "traffico intent\n");
     fprintf(out, "interface: %s\n", ifname);
     fprintf(out, "direction: %s\n",
@@ -597,6 +601,7 @@ static inline void intent_print_explain(FILE *out,
 
     fprintf(out, "\ndropped traffic:\n");
     fprintf(out, "  - malformed packets that cannot be safely classified\n");
+    /* Only mention fragment policy when a permit depends on L4 ports. */
     if (has_l4_permits)
         fprintf(out, "  - TCP/UDP fragments whose destination port cannot be checked\n");
     fprintf(out, "  - any traffic not matching a permit\n");
