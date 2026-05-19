@@ -27,6 +27,7 @@ struct intent_bpf_rule
 
 struct intent_bpf_plan
 {
+    enum intent_direction direction;
     uint32_t rule_count;
     struct intent_bpf_rule rules[INTENT_BPF_MAX_RULES];
 };
@@ -74,12 +75,17 @@ static inline int intent_bpf_plan_from_enforcement(const struct intent_enforceme
                                                    const char **err_msg)
 {
     memset(bpf_plan, 0, sizeof(*bpf_plan));
-    if (plan->rule_count > INTENT_BPF_MAX_RULES)
+    if (plan->direction != INTENT_DIRECTION_EGRESS)
     {
-        *err_msg = "Intent BPF plan exceeds rule limit";
-        return -1;
+        return intent_fail(err_msg, "Intent BPF backend supports egress only");
     }
 
+    if (plan->rule_count > INTENT_BPF_MAX_RULES)
+    {
+        return intent_fail(err_msg, "Intent BPF plan exceeds rule limit");
+    }
+
+    bpf_plan->direction = plan->direction;
     bpf_plan->rule_count = (uint32_t)plan->rule_count;
     for (size_t i = 0; i < plan->rule_count; i++)
     {
@@ -89,8 +95,7 @@ static inline int intent_bpf_plan_from_enforcement(const struct intent_enforceme
         /* This is the BPF backend admissibility gate. */
         if (!intent_bpf_rule_supported(src))
         {
-            *err_msg = "Intent BPF plan contains unsupported rule";
-            return -1;
+            return intent_fail(err_msg, "Intent BPF plan contains unsupported rule");
         }
 
         if (src->kind == INTENT_ENFORCEMENT_RULE_ARP)

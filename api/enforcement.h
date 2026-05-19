@@ -173,8 +173,7 @@ static inline int intent_enforcement_apply_true_predicate(struct intent_enforcem
 
     if (path->predicate_count >= MAX_INTENT_PREDICATES)
     {
-        *err_msg = "enforcement path exceeds predicate limit";
-        return -1;
+        return intent_fail(err_msg, "enforcement path exceeds predicate limit");
     }
 
     path->predicates[path->predicate_count] = *predicate;
@@ -222,8 +221,7 @@ static inline int intent_enforcement_add_false_predicate(struct intent_enforceme
 {
     if (path->false_predicate_count >= MAX_DECISION_NODES)
     {
-        *err_msg = "enforcement path exceeds predicate limit";
-        return -1;
+        return intent_fail(err_msg, "enforcement path exceeds predicate limit");
     }
 
     /*
@@ -264,8 +262,7 @@ static inline int intent_enforcement_append_rule(struct intent_enforcement_plan 
 
     if (plan->rule_count >= MAX_INTENT_ENFORCEMENT_RULES)
     {
-        *err_msg = "enforcement plan exceeds rule limit";
-        return -1;
+        return intent_fail(err_msg, "enforcement plan exceeds rule limit");
     }
 
     plan->rules[plan->rule_count] = *rule;
@@ -296,8 +293,8 @@ static inline int intent_enforcement_emit_path(const struct intent_enforcement_p
         {
             if (has_eth_type)
             {
-                *err_msg = "enforcement path is outside the first supported subset";
-                return -1;
+                return intent_fail(err_msg,
+                                   "enforcement path is outside the first supported subset");
             }
             has_eth_type = true;
             eth_type = predicate->values.values[0];
@@ -308,8 +305,8 @@ static inline int intent_enforcement_emit_path(const struct intent_enforcement_p
         {
             if (has_ip_dst)
             {
-                *err_msg = "enforcement path is outside the first supported subset";
-                return -1;
+                return intent_fail(err_msg,
+                                   "enforcement path is outside the first supported subset");
             }
             has_ip_dst = true;
             rule.ip_dst = predicate->values.values[0];
@@ -321,8 +318,8 @@ static inline int intent_enforcement_emit_path(const struct intent_enforcement_p
             if (has_ip_proto ||
                 !intent_enforcement_collect_proto(predicate, &rule))
             {
-                *err_msg = "enforcement path is outside the first supported subset";
-                return -1;
+                return intent_fail(err_msg,
+                                   "enforcement path is outside the first supported subset");
             }
             has_ip_proto = true;
             continue;
@@ -332,30 +329,27 @@ static inline int intent_enforcement_emit_path(const struct intent_enforcement_p
         {
             if (has_l4_dst_port)
             {
-                *err_msg = "enforcement path is outside the first supported subset";
-                return -1;
+                return intent_fail(err_msg,
+                                   "enforcement path is outside the first supported subset");
             }
             has_l4_dst_port = true;
             rule.l4_dst_port = (uint16_t)predicate->values.values[0];
             continue;
         }
 
-        *err_msg = "enforcement path is outside the first supported subset";
-        return -1;
+        return intent_fail(err_msg, "enforcement path is outside the first supported subset");
     }
 
     if (!has_eth_type)
     {
-        *err_msg = "enforcement path missing EtherType guard";
-        return -1;
+        return intent_fail(err_msg, "enforcement path missing EtherType guard");
     }
 
     if (eth_type == INTENT_ETH_P_ARP)
     {
         if (path->predicate_count != 1)
         {
-            *err_msg = "ARP enforcement path has unsupported predicates";
-            return -1;
+            return intent_fail(err_msg, "ARP enforcement path has unsupported predicates");
         }
         rule.kind = INTENT_ENFORCEMENT_RULE_ARP;
         return intent_enforcement_append_rule(plan, &rule, err_msg);
@@ -370,8 +364,7 @@ static inline int intent_enforcement_emit_path(const struct intent_enforcement_p
         return intent_enforcement_append_rule(plan, &rule, err_msg);
     }
 
-    *err_msg = "enforcement path is outside the first supported subset";
-    return -1;
+    return intent_fail(err_msg, "enforcement path is outside the first supported subset");
 }
 
 static inline int intent_enforcement_walk_edge(const struct decision_dag *dag,
@@ -446,8 +439,7 @@ static inline int intent_enforcement_walk_edge(const struct decision_dag *dag,
     case DECISION_TERMINAL_DROP:
         return 0;
     default:
-        *err_msg = "enforcement path is outside the first supported subset";
-        return -1;
+        return intent_fail(err_msg, "enforcement path is outside the first supported subset");
     }
 }
 

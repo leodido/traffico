@@ -75,7 +75,7 @@ bats_require_minimum_version 1.7.0
 @test "Intent mode rejects ingress until designed" {
     run traffico -i lo --at ingress --allow arp --dry-run
     [ $status -eq 1 ]
-    [ "${lines[0]}" == "traffico: intent currently supports --at egress only" ]
+    [ "${lines[0]}" == "traffico: intent dry-run: Intent BPF backend supports egress only" ]
 }
 
 @test "--allow rejects malformed values" {

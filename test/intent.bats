@@ -112,7 +112,20 @@ assert_intent_tc_cleanup() {
 @test "Intent live ingress rejection leaves TC untouched" {
     run ip netns exec "${NETNS}" traffico -i "${PEER}" --at ingress --allow arp
     [ $status -eq 1 ]
-    [ "${lines[0]}" == "traffico: intent currently supports --at egress only" ]
+    [ "${lines[0]}" == "traffico: intent attach: Intent BPF backend supports egress only" ]
+
+    assert_intent_tc_cleanup
+}
+
+@test "--dry-run --explain prints Intent before backend direction rejection" {
+    run ip netns exec "${NETNS}" traffico -i "${PEER}" --at ingress \
+        --allow arp \
+        --dry-run --explain
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico intent" ]
+    [ "${lines[1]}" == "interface: ${PEER}" ]
+    [ "${lines[2]}" == "direction: ingress" ]
+    [[ "$output" == *"traffico: intent dry-run: Intent BPF backend supports egress only"* ]]
 
     assert_intent_tc_cleanup
 }

@@ -17,6 +17,13 @@ static int attach_intent_bpf(struct config *conf,
     char buf[100];
     buf[sizeof(buf) - 1] = '\0';
 
+    if (plan->direction != INTENT_DIRECTION_EGRESS ||
+        conf->attach_point != BPF_TC_EGRESS)
+    {
+        log_err(conf, "fail: intent BPF backend supports egress only\n");
+        return 1;
+    }
+
     struct intent_bpf *obj = intent_bpf__open();
     if (!obj)
     {

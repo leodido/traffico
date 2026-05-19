@@ -400,6 +400,25 @@ static int test_enforcement_rejects_unsupported_predicate_before_extraction(void
     return 0;
 }
 
+static int test_enforcement_errors_accept_null_message_sink(void)
+{
+    struct intent_enforcement_path path = {0};
+    struct intent_predicate predicate = {0};
+    struct intent_enforcement_plan plan = {0};
+    struct intent_enforcement_rule rule = {0};
+
+    path.predicate_count = MAX_INTENT_PREDICATES;
+    for (size_t i = 0; i < path.predicate_count; i++)
+        set_eq_predicate(&path.predicates[i], INTENT_FIELD_ETH_TYPE, INTENT_ETH_P_IP);
+    set_eq_predicate(&predicate, INTENT_FIELD_ARP_TPA, 0x0a000001);
+    CHECK(intent_enforcement_apply_true_predicate(&path, &predicate, NULL) == -1);
+
+    plan.rule_count = MAX_INTENT_ENFORCEMENT_RULES;
+    rule.kind = INTENT_ENFORCEMENT_RULE_ARP;
+    CHECK(intent_enforcement_append_rule(&plan, &rule, NULL) == -1);
+    return 0;
+}
+
 int main(void)
 {
     RUN_TEST(test_enforcement_extracts_arp_rule);
@@ -412,6 +431,7 @@ int main(void)
     RUN_TEST(test_enforcement_intersects_in_with_eq_and_records_false_eq);
     RUN_TEST(test_enforcement_rejects_mutated_unguarded_port);
     RUN_TEST(test_enforcement_rejects_unsupported_predicate_before_extraction);
+    RUN_TEST(test_enforcement_errors_accept_null_message_sink);
     puts("enforcement unit tests: ok");
     return 0;
 }
