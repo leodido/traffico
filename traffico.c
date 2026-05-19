@@ -13,8 +13,11 @@
 
 #include "api.h"
 #include "api/dag.h"
+#include "api/enforcement.h"
 #include "api/input_parse.h"
+#include "api/intent_bpf.h"
 #include "chain.h"
+#include "intent_bpf_loader.h"
 
 const char *argp_program_version = TOOL_NAME " 0.0";
 const char *argp_program_bug_address = "https://github.com/leodido/traffico/issues";
@@ -252,11 +255,6 @@ static error_t parse_cli(int key, char *arg, struct argp_state *state)
                 g_intent.direction = INTENT_DIRECTION_EGRESS;
             intent_normalize(&g_intent);
         }
-        if (g_intent_mode && g_config.attach_point != BPF_TC_EGRESS)
-        {
-            argp_error(state, "intent currently supports --at egress only");
-        }
-
         // In chain or Intent mode, positional args are not required
         if (!g_chain_arg && !g_intent_mode)
         {
@@ -446,17 +444,20 @@ int await(struct bpf_tc_hook hook, struct bpf_tc_opts opts)
     return 0;
 }
 
-static int intent_validate(const char *context)
+static int intent_compile_for_bpf(const char *context,
+                                  struct intent_enforcement_plan *plan,
+                                  struct intent_bpf_plan *bpf_plan)
 {
     struct decision_dag dag = {0};
     const char *err_msg = NULL;
 
     /*
-     * Dry-run and live rejection validate through the same DDAG path.
-     * This keeps dry-run aligned with the attach preconditions.
+     * Dry-run and attach compile through the same backend path.
+     * This keeps dry-run aligned with BPF admission checks.
      */
     if (intent_build_dag(&g_intent, &dag, &err_msg) != 0 ||
-        intent_validate_supported_subset(&dag, &err_msg) != 0)
+        intent_enforcement_plan_from_dag(&dag, plan, &err_msg) != 0 ||
+        intent_bpf_plan_from_enforcement(plan, bpf_plan, &err_msg) != 0)
     {
         fprintf(g_config.err_stream, TOOL_NAME ": %s: %s\n", context, err_msg);
         return 1;
@@ -469,7 +470,6 @@ static void intent_explain(FILE *out)
 {
     const char *ifname = g_config.ifname[0] ? g_config.ifname : "not attached";
 
-    /* The caller chooses stdout or stderr based on the command result. */
     if (g_intent_explain)
     {
         intent_print_explain(out, ifname, &g_intent);
@@ -479,27 +479,32 @@ static void intent_explain(FILE *out)
 
 static int intent_dry_run(void)
 {
-    if (intent_validate("intent dry-run") != 0)
+    struct intent_enforcement_plan plan = {0};
+    struct intent_bpf_plan bpf_plan = {0};
+
+    intent_explain(g_config.out_stream);
+    if (intent_compile_for_bpf("intent dry-run", &plan, &bpf_plan) != 0)
     {
         return 1;
     }
 
-    intent_explain(g_config.out_stream);
     fprintf(g_config.out_stream, "intent dry-run: compiler ok\n");
-    fprintf(g_config.out_stream, "intent backend: not implemented\n");
+    fprintf(g_config.out_stream, "intent backend: bpf admissible\n");
     return 0;
 }
 
-static int intent_reject_live_attach(void)
+static int intent_attach(void)
 {
-    if (intent_validate("intent attach") != 0)
+    struct intent_enforcement_plan plan = {0};
+    struct intent_bpf_plan bpf_plan = {0};
+
+    intent_explain(g_config.out_stream);
+    if (intent_compile_for_bpf("intent attach", &plan, &bpf_plan) != 0)
     {
         return 1;
     }
 
-    intent_explain(g_config.err_stream);
-    fprintf(g_config.err_stream, TOOL_NAME ": intent attach backend is not implemented; use --dry-run\n");
-    return 1;
+    return attach_intent_bpf(&g_config, &bpf_plan, &await);
 }
 
 int main(int argc, char **argv)
@@ -519,10 +524,6 @@ int main(int argc, char **argv)
     {
         return intent_dry_run();
     }
-    if (g_intent_mode)
-    {
-        return intent_reject_live_attach();
-    }
 
     // Setup signal handling
     if (signal(SIGINT, sig_handler) == SIG_ERR || signal(SIGTERM, sig_handler) == SIG_ERR)
@@ -534,6 +535,11 @@ int main(int argc, char **argv)
     // Setup libbpf
     libbpf_set_strict_mode(LIBBPF_STRICT_ALL);
     libbpf_set_print(libbpf_print_fn);
+
+    if (g_intent_mode)
+    {
+        return intent_attach();
+    }
 
     // Execute
     if (g_chain_len > 0)

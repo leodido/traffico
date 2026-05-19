@@ -25,14 +25,14 @@ bats_require_minimum_version 1.7.0
         --dry-run
     [ $status -eq 0 ]
     [[ "$output" == *"intent dry-run: compiler ok"* ]]
-    [[ "$output" == *"intent backend: not implemented"* ]]
+    [[ "$output" == *"intent backend: bpf admissible"* ]]
 }
 
 @test "--permit is an alias for --allow" {
     run traffico -i lo --at egress --permit tcp/10.0.0.10:443 --dry-run
     [ $status -eq 0 ]
     [[ "$output" == *"intent dry-run: compiler ok"* ]]
-    [[ "$output" == *"intent backend: not implemented"* ]]
+    [[ "$output" == *"intent backend: bpf admissible"* ]]
 }
 
 @test "--allow and --chain are mutually exclusive" {
@@ -75,7 +75,7 @@ bats_require_minimum_version 1.7.0
 @test "Intent mode rejects ingress until designed" {
     run traffico -i lo --at ingress --allow arp --dry-run
     [ $status -eq 1 ]
-    [ "${lines[0]}" == "traffico: intent currently supports --at egress only" ]
+    [ "${lines[0]}" == "traffico: intent dry-run: Intent BPF backend supports egress only" ]
 }
 
 @test "--allow rejects malformed values" {
