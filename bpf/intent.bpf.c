@@ -35,7 +35,6 @@ int intent(struct __sk_buff *skb)
 {
     void *data_end = (void *)(unsigned long long)skb->data_end;
     void *data = (void *)(unsigned long long)skb->data;
-    __u64 data_len = data_end - data;
     struct ethhdr *eth = data;
     const int l3_offset = sizeof(*eth);
 
@@ -81,9 +80,6 @@ int intent(struct __sk_buff *skb)
     if (total_len < ip_header_len)
         return TC_ACT_SHOT;
 
-    if ((__u32)data_len < l3_offset + total_len)
-        return TC_ACT_SHOT;
-
     const int l4_offset = l3_offset + ip_header_len;
     if (data + l4_offset > data_end)
         return TC_ACT_SHOT;
@@ -91,8 +87,11 @@ int intent(struct __sk_buff *skb)
     if (ip->protocol != IPPROTO_TCP && ip->protocol != IPPROTO_UDP)
         return TC_ACT_SHOT;
 
-    /* Destination-port permits cannot classify non-first fragments. */
-    if (ip_is_fragment(skb, l3_offset))
+    /*
+     * Only subsequent fragments are unclassifiable here.
+     * First fragments still carry the L4 destination port.
+     */
+    if (ip_is_subsequent_fragment(skb, l3_offset))
         return TC_ACT_SHOT;
 
     __u32 l4_header_len = ip->protocol == IPPROTO_TCP ? sizeof(struct tcphdr) : sizeof(struct udphdr);

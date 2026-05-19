@@ -281,8 +281,11 @@ assert_truncated_arp_blocked() {
 
     assert_truncated_arp_blocked "${NETNS}" 13601
 
-    assert_packet_blocked "${NETNS}" 13602 \
+    assert_packet_seen "${NETNS}" 13602 \
         --type fragment-first --dst-ip "${VETH_ADDR}" --dst-port 8787
+
+    assert_packet_blocked "${NETNS}" 13603 \
+        --type fragment-subsequent --dst-ip "${VETH_ADDR}" --frag-offset 10
 }
 
 @test "Intent behavior is independent of allow order" {
