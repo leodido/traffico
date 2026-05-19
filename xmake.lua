@@ -33,15 +33,60 @@ target_end()
 -- test
 add_requires("bats v1.11.1", { system = false })
 add_requires("mini_httpd", { system = false })
+target("intent-ir-unit")
+    set_kind("binary")
+    set_default(false)
+    add_includedirs(".")
+    add_files({ "test/intent_unit.c" }, { languages = { "c11" }})
+target_end()
+
 target("test")
     set_kind("phony")
-    add_deps("traffico", "traffico-cni")
     add_packages("bats", "mini_httpd")
     on_run(function (target)
-        for _, name in ipairs(target:get("deps")) do
-            os.addenv("PATH", path.absolute(target:dep(name):targetdir()))
+        import("core.base.option")
+        local bats_args = {"-t"}
+        local selected = table.wrap(option.get("arguments"))
+        local build_targets = {}
+        local selected_test_paths = 0
+        if #selected == 0 then
+            table.insert(bats_args, "test/")
+            build_targets = {"traffico", "traffico-cni", "intent-ir-unit"}
+        else
+            local needs_full_suite_targets = false
+            local needs_intent_ir_unit = false
+            for _, arg in ipairs(selected) do
+                table.insert(bats_args, arg)
+                if arg == "test" or arg == "test/" or arg:find("%.bats$") then
+                    selected_test_paths = selected_test_paths + 1
+                    if arg:find("intent_unit", 1, true) then
+                        needs_intent_ir_unit = true
+                    else
+                        needs_full_suite_targets = true
+                    end
+                end
+            end
+            if selected_test_paths == 0 then
+                table.insert(bats_args, "test/")
+                build_targets = {"traffico", "traffico-cni", "intent-ir-unit"}
+            elseif needs_full_suite_targets then
+                build_targets = {"traffico", "traffico-cni", "intent-ir-unit"}
+            elseif needs_intent_ir_unit then
+                build_targets = {"intent-ir-unit"}
+            end
         end
+        for _, name in ipairs(build_targets) do
+            os.execv("xmake", {"build", "-y", name})
+        end
+        import("core.project.project")
+        for _, name in ipairs(build_targets) do
+            local built = project.target(name)
+            if built then
+                os.addenv("PATH", path.absolute(built:targetdir()))
+            end
+        end
+        os.addenv("PATH", path.absolute("tools"))
         import("privilege.sudo")
-        sudo.execv("bats", { "-t", "test/" })
+        sudo.execv("bats", bats_args)
     end)
 target_end()
