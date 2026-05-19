@@ -136,6 +136,7 @@ static error_t parse_cli(int key, char *arg, struct argp_state *state)
     case ARGP_KEY_INIT:
         g_config.attach_point = BPF_TC_EGRESS;
         g_config.ifindex = 0;
+        g_config.ifname[0] = '\0';
         g_config.cleanup_on_exit = true;
         g_config.verbose = false;
         g_config.err_stream = state->err_stream = stderr;
@@ -276,8 +277,11 @@ static error_t parse_cli(int key, char *arg, struct argp_state *state)
 
     // Final settings, validations
     case ARGP_KEY_FINI:
-        // Fallback to the default gateway interface by default
-        if (g_config.ifindex == 0)
+        /*
+         * Dry-run compiles Intent only.
+         * Live attach and legacy modes still need a concrete interface.
+         */
+        if (g_config.ifindex == 0 && !(g_intent_mode && g_intent_dry_run))
         {
             if (get_gateway_iface(g_config.ifname))
             {
@@ -463,10 +467,12 @@ static int intent_validate(const char *context)
 
 static void intent_explain(FILE *out)
 {
+    const char *ifname = g_config.ifname[0] ? g_config.ifname : "not attached";
+
     /* The caller chooses stdout or stderr based on the command result. */
     if (g_intent_explain)
     {
-        intent_print_explain(out, g_config.ifname, &g_intent);
+        intent_print_explain(out, ifname, &g_intent);
         fflush(out);
     }
 }

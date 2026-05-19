@@ -501,10 +501,21 @@ static inline bool intent_permit_has_proto_in_tcp_udp(const struct intent_permit
         const struct intent_predicate *predicate = &permit->predicates[i];
         if (predicate->field == INTENT_FIELD_IP_PROTO &&
             predicate->op == INTENT_OP_IN &&
-            predicate->values.count == 2 &&
-            predicate->values.values[0] == INTENT_IPPROTO_TCP &&
-            predicate->values.values[1] == INTENT_IPPROTO_UDP)
-            return true;
+            predicate->values.count == 2)
+        {
+            bool has_tcp = false;
+            bool has_udp = false;
+
+            for (size_t j = 0; j < predicate->values.count; j++)
+            {
+                if (predicate->values.values[j] == INTENT_IPPROTO_TCP)
+                    has_tcp = true;
+                if (predicate->values.values[j] == INTENT_IPPROTO_UDP)
+                    has_udp = true;
+            }
+            if (has_tcp && has_udp)
+                return true;
+        }
     }
     return false;
 }
