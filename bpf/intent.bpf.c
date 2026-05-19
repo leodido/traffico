@@ -14,6 +14,7 @@ struct intent_bpf_rule
     __u32 ip_dst;
 };
 
+/* libbpf writes these read-only values before loading the program. */
 const volatile __u32 intent_rule_count = 0;
 const volatile struct intent_bpf_rule intent_rules[32] = {};
 
@@ -38,6 +39,7 @@ int intent(struct __sk_buff *skb)
     struct ethhdr *eth = data;
     const int l3_offset = sizeof(*eth);
 
+    /* Intent allowlists fail closed on packets that cannot be classified. */
     if (data + l3_offset > data_end)
         return TC_ACT_SHOT;
 
@@ -48,6 +50,7 @@ int intent(struct __sk_buff *skb)
             return TC_ACT_SHOT;
 
         struct arphdr *arp = data + l3_offset;
+        /* ARP address lengths are packet-controlled. */
         __u32 arp_payload_len = ((__u32)arp->ar_hln + (__u32)arp->ar_pln) * 2;
         __u32 arp_len = sizeof(*arp) + arp_payload_len;
         if (data + l3_offset + arp_len > data_end)
@@ -88,6 +91,7 @@ int intent(struct __sk_buff *skb)
     if (ip->protocol != IPPROTO_TCP && ip->protocol != IPPROTO_UDP)
         return TC_ACT_SHOT;
 
+    /* Destination-port permits cannot classify non-first fragments. */
     if (ip_is_fragment(skb, l3_offset))
         return TC_ACT_SHOT;
 
@@ -102,6 +106,7 @@ int intent(struct __sk_buff *skb)
     __u16 dst_port = bpf_ntohs(*dst_port_ptr);
     __u32 dst_ip = bpf_ntohl(ip->daddr);
 
+    /* Rules are correlated tuples, not independent allow sets. */
     for (__u32 i = 0; i < 32; i++)
     {
         if (i >= intent_rule_count)

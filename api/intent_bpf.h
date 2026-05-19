@@ -40,6 +40,10 @@ static inline bool intent_bpf_should_destroy_hook(bool cleanup_on_exit,
                                                   bool hook_created,
                                                   bool prog_attached)
 {
+    /*
+     * Destroy only qdiscs created by this attach attempt.
+     * Keep clsact installed when attach succeeded and cleanup is disabled.
+     */
     return hook_created && (cleanup_on_exit || !prog_attached);
 }
 
@@ -82,6 +86,7 @@ static inline int intent_bpf_plan_from_enforcement(const struct intent_enforceme
         const struct intent_enforcement_rule *src = &plan->rules[i];
         struct intent_bpf_rule *dst = &bpf_plan->rules[i];
 
+        /* This is the BPF backend admissibility gate. */
         if (!intent_bpf_rule_supported(src))
         {
             *err_msg = "Intent BPF plan contains unsupported rule";

@@ -457,8 +457,8 @@ static int intent_compile_for_bpf(const char *context,
     const char *err_msg = NULL;
 
     /*
-     * Dry-run and live rejection validate through the same DDAG path.
-     * This keeps dry-run aligned with the attach preconditions.
+     * Dry-run and attach compile through the same backend path.
+     * This keeps dry-run aligned with BPF admission checks.
      */
     if (intent_build_dag(&g_intent, &dag, &err_msg) != 0 ||
         intent_enforcement_plan_from_dag(&dag, plan, &err_msg) != 0 ||

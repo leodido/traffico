@@ -24,6 +24,7 @@ static int attach_intent_bpf(struct config *conf,
         return 1;
     }
 
+    /* Fill rodata before load so BPF sees one immutable rule table. */
     obj->rodata->intent_rule_count = plan->rule_count;
     for (uint32_t i = 0; i < plan->rule_count; i++)
     {
@@ -94,6 +95,10 @@ static int attach_intent_bpf(struct config *conf,
     }
 
 cleanup_hook:
+    /*
+     * Do not destroy a clsact qdisc that already existed.
+     * Empty qdiscs created by failed attaches should be removed.
+     */
     if (intent_bpf_should_destroy_hook(conf->cleanup_on_exit, hook_created, prog_attached))
     {
         int cleanup_err;
