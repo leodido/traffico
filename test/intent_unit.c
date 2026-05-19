@@ -174,6 +174,8 @@ static int test_rejects_invalid_and_duplicate_permits(void)
     CHECK(intent_add_permit(&intent, "icmp/10.0.0.10", &err) == -1);
     CHECK(strcmp(err, "unsupported permit") == 0);
     CHECK(intent_add_permit(&intent, "tcp/10.0.0.10", NULL) == -1);
+    CHECK(intent_add_permit(&intent, NULL, &err) == -1);
+    CHECK(strcmp(err, "invalid permit") == 0);
     CHECK(intent_add_permit(&intent, "arp", &err) == 0);
     CHECK(intent_add_permit(&intent, "arp", &err) == -1);
     CHECK(strcmp(err, "duplicate permit") == 0);
@@ -265,6 +267,66 @@ static int test_append_normalizes_predicate_order(void)
     return 0;
 }
 
+static int test_append_normalizes_value_set_order(void)
+{
+    struct intent intent = {0};
+    struct intent_permit first;
+    struct intent_permit second;
+    const uint32_t forward[] = {INTENT_IPPROTO_TCP, INTENT_IPPROTO_UDP};
+    const uint32_t reverse[] = {INTENT_IPPROTO_UDP, INTENT_IPPROTO_TCP};
+    const char *err = NULL;
+
+    intent_init(&intent, INTENT_DIRECTION_EGRESS);
+    intent_permit_init(&first);
+    intent_permit_init(&second);
+
+    CHECK(intent_add_predicate(&first,
+                               INTENT_FIELD_IP_PROTO,
+                               INTENT_OP_IN,
+                               forward,
+                               2,
+                               &err) == 0);
+    CHECK(intent_add_predicate(&second,
+                               INTENT_FIELD_IP_PROTO,
+                               INTENT_OP_IN,
+                               reverse,
+                               2,
+                               &err) == 0);
+    CHECK(second.predicates[0].values.values[0] == INTENT_IPPROTO_TCP);
+    CHECK(second.predicates[0].values.values[1] == INTENT_IPPROTO_UDP);
+
+    CHECK(intent_append_permit(&intent, &second, &err) == 0);
+    CHECK(intent_append_permit(&intent, &first, &err) == -1);
+    CHECK(strcmp(err, "duplicate permit") == 0);
+
+    return 0;
+}
+
+static int test_rejects_invalid_manual_predicates(void)
+{
+    struct intent_permit permit;
+    const uint32_t one[] = {INTENT_IPPROTO_TCP};
+    const uint32_t two[] = {INTENT_IPPROTO_TCP, INTENT_IPPROTO_UDP};
+    const uint32_t duplicate[] = {INTENT_IPPROTO_TCP, INTENT_IPPROTO_TCP};
+    const char *err = NULL;
+
+    intent_permit_init(&permit);
+
+    CHECK(intent_add_predicate(&permit, INTENT_FIELD_IP_PROTO, INTENT_OP_EQ, two, 2, &err) == -1);
+    CHECK(strcmp(err, "invalid permit") == 0);
+    CHECK(intent_add_predicate(&permit, INTENT_FIELD_IP_PROTO, INTENT_OP_IN, one, 1, &err) == -1);
+    CHECK(strcmp(err, "invalid permit") == 0);
+    CHECK(intent_add_predicate(&permit, INTENT_FIELD_IP_PROTO, INTENT_OP_IN, duplicate, 2, &err) == -1);
+    CHECK(strcmp(err, "invalid permit") == 0);
+    CHECK(intent_add_predicate(&permit, INTENT_FIELD_IP_DST, INTENT_OP_CIDR_CONTAINS, two, 2, &err) == -1);
+    CHECK(strcmp(err, "invalid permit") == 0);
+    CHECK(intent_add_predicate(&permit, INTENT_FIELD_IP_PROTO, INTENT_OP_EQ, NULL, 1, &err) == -1);
+    CHECK(strcmp(err, "invalid permit") == 0);
+    CHECK(permit.predicate_count == 0);
+
+    return 0;
+}
+
 static int test_rejects_too_many_permits(void)
 {
     struct intent intent = {0};
@@ -321,6 +383,8 @@ int main(void)
     RUN_TEST(test_rejects_empty_permits);
     RUN_TEST(test_rejects_permit_too_long);
     RUN_TEST(test_append_normalizes_predicate_order);
+    RUN_TEST(test_append_normalizes_value_set_order);
+    RUN_TEST(test_rejects_invalid_manual_predicates);
     RUN_TEST(test_rejects_too_many_permits);
     RUN_TEST(test_normalization_is_order_independent);
     puts("intent unit tests: ok");
