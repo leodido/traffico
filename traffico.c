@@ -255,11 +255,6 @@ static error_t parse_cli(int key, char *arg, struct argp_state *state)
                 g_intent.direction = INTENT_DIRECTION_EGRESS;
             intent_normalize(&g_intent);
         }
-        if (g_intent_mode && g_config.attach_point != BPF_TC_EGRESS)
-        {
-            argp_error(state, "intent currently supports --at egress only");
-        }
-
         // In chain or Intent mode, positional args are not required
         if (!g_chain_arg && !g_intent_mode)
         {
@@ -475,7 +470,6 @@ static void intent_explain(FILE *out)
 {
     const char *ifname = g_config.ifname[0] ? g_config.ifname : "not attached";
 
-    /* The caller chooses stdout or stderr based on the command result. */
     if (g_intent_explain)
     {
         intent_print_explain(out, ifname, &g_intent);
@@ -488,12 +482,12 @@ static int intent_dry_run(void)
     struct intent_enforcement_plan plan = {0};
     struct intent_bpf_plan bpf_plan = {0};
 
+    intent_explain(g_config.out_stream);
     if (intent_compile_for_bpf("intent dry-run", &plan, &bpf_plan) != 0)
     {
         return 1;
     }
 
-    intent_explain(g_config.out_stream);
     fprintf(g_config.out_stream, "intent dry-run: compiler ok\n");
     fprintf(g_config.out_stream, "intent backend: bpf admissible\n");
     return 0;
@@ -504,12 +498,12 @@ static int intent_attach(void)
     struct intent_enforcement_plan plan = {0};
     struct intent_bpf_plan bpf_plan = {0};
 
+    intent_explain(g_config.out_stream);
     if (intent_compile_for_bpf("intent attach", &plan, &bpf_plan) != 0)
     {
         return 1;
     }
 
-    intent_explain(g_config.out_stream);
     return attach_intent_bpf(&g_config, &bpf_plan, &await);
 }
 

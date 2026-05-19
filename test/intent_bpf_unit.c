@@ -46,6 +46,7 @@ static int test_bpf_lowering_preserves_correlated_rows(void)
     const char *err = NULL;
 
     CHECK(build_bpf_plan(&bpf_plan, &err) == 0);
+    CHECK(bpf_plan.direction == INTENT_DIRECTION_EGRESS);
     CHECK(bpf_plan.rule_count == 4);
     CHECK(bpf_plan.rules[0].kind == INTENT_BPF_RULE_ARP);
 
@@ -171,6 +172,22 @@ static int test_bpf_lowering_rejects_too_many_protos(void)
     return expect_unsupported_rule_rejected(&rule);
 }
 
+static int test_bpf_lowering_rejects_ingress_backend_plan(void)
+{
+    struct intent_enforcement_plan plan = {0};
+    struct intent_bpf_plan bpf_plan = {0};
+    const char *err = NULL;
+
+    plan.direction = INTENT_DIRECTION_INGRESS;
+    plan.rule_count = 1;
+    plan.rules[0].kind = INTENT_ENFORCEMENT_RULE_ARP;
+
+    CHECK(intent_bpf_plan_from_enforcement(&plan, &bpf_plan, &err) == -1);
+    CHECK(strcmp(err, "Intent BPF backend supports egress only") == 0);
+    CHECK(intent_bpf_plan_from_enforcement(&plan, &bpf_plan, NULL) == -1);
+    return 0;
+}
+
 static int test_bpf_hook_cleanup_policy(void)
 {
     // The live suite cannot force bpf_tc_attach() to fail deterministically.
@@ -197,6 +214,7 @@ int main(void)
     RUN_TEST(test_bpf_lowering_rejects_zero_proto_count);
     RUN_TEST(test_bpf_lowering_rejects_zero_l4_dst_port);
     RUN_TEST(test_bpf_lowering_rejects_too_many_protos);
+    RUN_TEST(test_bpf_lowering_rejects_ingress_backend_plan);
     RUN_TEST(test_bpf_hook_cleanup_policy);
     puts("intent bpf unit tests: ok");
     return 0;
