@@ -118,7 +118,7 @@ static inline int intent_build_dag(const struct intent *intent,
     /*
      * Each permit lowers to one linear predicate chain.
      * A false predicate falls through to the next permit chain.
-     * The last permit falls through to DROP.
+     * The last permit false edge targets terminal DROP.
      * Shared prefixes are intentionally not merged yet.
      */
     for (size_t i = 0; i < intent->permit_count; i++)
