@@ -8,9 +8,9 @@
 #include <string.h>
 
 #define MAX_INTENT_PERMITS 32
-/* Current permit grammar is IPv4-only. Revisit this bound with IPv6 support. */
+/* This bound only covers the IPv4 grammar accepted today. */
 #define MAX_INTENT_PERMIT_INPUT_LEN 128
-/* Reserved for forbid lowering; permits are the only accepted CLI rule today. */
+/* Forbid storage is reserved for the Intent model. */
 #define MAX_INTENT_FORBIDS 32
 #define MAX_INTENT_PREDICATES 6
 #define MAX_INTENT_SET_VALUES 4
@@ -50,7 +50,7 @@ enum intent_predicate_op
 {
     INTENT_OP_EQ = 0,
     INTENT_OP_IN = 1,
-    /* Reserved for future CIDR predicates; unsupported until lowered explicitly. */
+    /* CIDR predicates need explicit parser and backend lowering support. */
     INTENT_OP_CIDR_CONTAINS = 2,
 };
 
@@ -178,6 +178,7 @@ static inline int intent_predicate_qsort_compare(const void *left,
 
 static inline void intent_normalize_permit(struct intent_permit *permit)
 {
+    /* Canonical predicate order makes duplicate detection order independent. */
     qsort(permit->predicates,
           permit->predicate_count,
           sizeof(permit->predicates[0]),
@@ -343,6 +344,7 @@ static inline int intent_add_permit(struct intent *intent,
     if (strcmp(arg, "arp") == 0)
         return intent_add_arp_permit(intent, err_msg);
 
+    /* Parse a local copy because argp owns the input string. */
     memcpy(buf, arg, arg_len + 1);
     kind = buf;
     target = strchr(kind, '/');
@@ -354,8 +356,8 @@ static inline int intent_add_permit(struct intent *intent,
     {
         /*
          * dns/IP is a service shortcut for TCP+UDP destination port 53.
-         * Keep dns/IP:PORT rejected so custom ports must be spelled
-         * explicitly as tcp/IP:PORT and udp/IP:PORT.
+         * dns/IP:PORT stays rejected to avoid hidden custom-port semantics.
+         * Use tcp/IP:PORT plus udp/IP:PORT for custom DNS-like services.
          */
         if (strchr(target, ':'))
             return intent_fail(err_msg, "dns permits do not accept a port");
