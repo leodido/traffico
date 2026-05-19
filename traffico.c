@@ -244,6 +244,7 @@ static error_t parse_cli(int key, char *arg, struct argp_state *state)
         }
         if (g_intent_mode)
         {
+            /* Normalize here so dry-run, explain, and attach share one order. */
             if (g_config.attach_point == BPF_TC_INGRESS)
                 g_intent.direction = INTENT_DIRECTION_INGRESS;
             else
@@ -446,6 +447,10 @@ static int intent_validate(const char *context)
     struct decision_dag dag = {0};
     const char *err_msg = NULL;
 
+    /*
+     * Dry-run and live rejection validate through the same DDAG path.
+     * This keeps dry-run aligned with the attach preconditions.
+     */
     if (intent_build_dag(&g_intent, &dag, &err_msg) != 0 ||
         intent_validate_supported_subset(&dag, &err_msg) != 0)
     {
@@ -458,6 +463,7 @@ static int intent_validate(const char *context)
 
 static void intent_explain(FILE *out)
 {
+    /* The caller chooses stdout or stderr based on the command result. */
     if (g_intent_explain)
     {
         intent_print_explain(out, g_config.ifname, &g_intent);
