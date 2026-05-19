@@ -4,6 +4,7 @@
 #include <arpa/inet.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -473,6 +474,148 @@ static inline void intent_normalize(struct intent *intent)
           intent->permit_count,
           sizeof(intent->permits[0]),
           intent_permit_compare);
+}
+
+static inline bool intent_permit_get_eq(const struct intent_permit *permit,
+                                        enum intent_predicate_field field,
+                                        uint32_t *out)
+{
+    for (size_t i = 0; i < permit->predicate_count; i++)
+    {
+        const struct intent_predicate *predicate = &permit->predicates[i];
+        if (predicate->field == field &&
+            predicate->op == INTENT_OP_EQ &&
+            predicate->values.count == 1)
+        {
+            *out = predicate->values.values[0];
+            return true;
+        }
+    }
+    return false;
+}
+
+static inline bool intent_permit_has_proto_in_tcp_udp(const struct intent_permit *permit)
+{
+    for (size_t i = 0; i < permit->predicate_count; i++)
+    {
+        const struct intent_predicate *predicate = &permit->predicates[i];
+        if (predicate->field == INTENT_FIELD_IP_PROTO &&
+            predicate->op == INTENT_OP_IN &&
+            predicate->values.count == 2)
+        {
+            bool has_tcp = false;
+            bool has_udp = false;
+
+            for (size_t j = 0; j < predicate->values.count; j++)
+            {
+                if (predicate->values.values[j] == INTENT_IPPROTO_TCP)
+                    has_tcp = true;
+                if (predicate->values.values[j] == INTENT_IPPROTO_UDP)
+                    has_udp = true;
+            }
+            if (has_tcp && has_udp)
+                return true;
+        }
+    }
+    return false;
+}
+
+static inline void intent_format_ip(uint32_t ip, char *buf, size_t len)
+{
+    struct in_addr addr = {0};
+    addr.s_addr = htonl(ip);
+    inet_ntop(AF_INET, &addr, buf, len);
+}
+
+static inline void intent_print_explain(FILE *out,
+                                        const char *ifname,
+                                        const struct intent *intent)
+{
+    char ip[INET_ADDRSTRLEN];
+    bool has_l4_permits = false;
+
+    /*
+     * The caller passes a normalized Intent.
+     * That keeps explain output stable across CLI input order.
+     */
+    fprintf(out, "traffico intent\n");
+    fprintf(out, "interface: %s\n", ifname);
+    fprintf(out, "direction: %s\n",
+            intent->direction == INTENT_DIRECTION_EGRESS ? "egress" : "ingress");
+    fprintf(out, "default: drop\n\n");
+    fprintf(out, "permitted traffic:\n");
+
+    for (size_t i = 0; i < intent->permit_count; i++)
+    {
+        const struct intent_permit *permit = &intent->permits[i];
+        uint32_t eth_type = 0;
+        uint32_t ip_dst = 0;
+        uint32_t proto = 0;
+        uint32_t port = 0;
+
+        if (intent_permit_get_eq(permit, INTENT_FIELD_ETH_TYPE, &eth_type) &&
+            eth_type == INTENT_ETH_P_ARP)
+        {
+            fprintf(out, "  %zu. ARP\n", i + 1);
+            continue;
+        }
+
+        if (intent_permit_get_eq(permit, INTENT_FIELD_ETH_TYPE, &eth_type) &&
+            eth_type == INTENT_ETH_P_IP &&
+            intent_permit_get_eq(permit, INTENT_FIELD_IP_DST, &ip_dst) &&
+            intent_permit_get_eq(permit, INTENT_FIELD_L4_DST_PORT, &port) &&
+            intent_permit_has_proto_in_tcp_udp(permit) &&
+            port == INTENT_DNS_PORT)
+        {
+            has_l4_permits = true;
+            intent_format_ip(ip_dst, ip, sizeof(ip));
+            fprintf(out, "  %zu. DNS to %s over TCP or UDP destination port 53\n",
+                    i + 1,
+                    ip);
+            continue;
+        }
+
+        if (intent_permit_get_eq(permit, INTENT_FIELD_ETH_TYPE, &eth_type) &&
+            eth_type == INTENT_ETH_P_IP &&
+            intent_permit_get_eq(permit, INTENT_FIELD_IP_DST, &ip_dst) &&
+            intent_permit_get_eq(permit, INTENT_FIELD_IP_PROTO, &proto) &&
+            intent_permit_get_eq(permit, INTENT_FIELD_L4_DST_PORT, &port) &&
+            proto == INTENT_IPPROTO_TCP)
+        {
+            has_l4_permits = true;
+            intent_format_ip(ip_dst, ip, sizeof(ip));
+            fprintf(out, "  %zu. TCP to %s destination port %u\n",
+                    i + 1,
+                    ip,
+                    port);
+            continue;
+        }
+
+        if (intent_permit_get_eq(permit, INTENT_FIELD_ETH_TYPE, &eth_type) &&
+            eth_type == INTENT_ETH_P_IP &&
+            intent_permit_get_eq(permit, INTENT_FIELD_IP_DST, &ip_dst) &&
+            intent_permit_get_eq(permit, INTENT_FIELD_IP_PROTO, &proto) &&
+            intent_permit_get_eq(permit, INTENT_FIELD_L4_DST_PORT, &port) &&
+            proto == INTENT_IPPROTO_UDP)
+        {
+            has_l4_permits = true;
+            intent_format_ip(ip_dst, ip, sizeof(ip));
+            fprintf(out, "  %zu. UDP to %s destination port %u\n",
+                    i + 1,
+                    ip,
+                    port);
+            continue;
+        }
+
+        fprintf(out, "  %zu. permit cannot be explained by this traffico version\n", i + 1);
+    }
+
+    fprintf(out, "\ndropped traffic:\n");
+    fprintf(out, "  - malformed packets that cannot be safely classified\n");
+    /* Only mention fragment policy when a permit depends on L4 ports. */
+    if (has_l4_permits)
+        fprintf(out, "  - TCP/UDP fragments whose destination port cannot be checked\n");
+    fprintf(out, "  - any traffic not matching a permit\n");
 }
 
 #endif

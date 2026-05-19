@@ -7,13 +7,104 @@ bats_require_minimum_version 1.7.0
 @test "help" {
     run traffico --help
     [ $status -eq 0 ]
-    [ "${lines[0]}" == 'Usage: traffico [OPTION...] PROGRAM [INPUT]' ]
+    [ "${lines[0]}" == 'Usage: traffico [OPTION...] [PROGRAM [INPUT]]' ]
 }
 
 @test "usage" {
     run traffico --usage
     [ $status -eq 0 ]
     [ "${lines[0]%% *}" == 'Usage:' ]
+}
+
+@test "--allow accepts first Intent values in dry-run mode" {
+    run traffico -i lo --at egress \
+        --allow arp \
+        --allow dns/10.0.0.53 \
+        --allow tcp/10.0.0.10:443 \
+        --allow udp/10.0.0.20:123 \
+        --dry-run
+    [ $status -eq 0 ]
+    [[ "$output" == *"intent dry-run: compiler ok"* ]]
+    [[ "$output" == *"intent backend: not implemented"* ]]
+}
+
+@test "--permit is an alias for --allow" {
+    run traffico -i lo --at egress --permit tcp/10.0.0.10:443 --dry-run
+    [ $status -eq 0 ]
+    [[ "$output" == *"intent dry-run: compiler ok"* ]]
+    [[ "$output" == *"intent backend: not implemented"* ]]
+}
+
+@test "--allow and --chain are mutually exclusive" {
+    run traffico -i lo --allow arp --chain "allow_ethertype:arp" --dry-run
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: --allow/--permit and --chain are mutually exclusive" ]
+}
+
+@test "--allow and positional program are mutually exclusive" {
+    run traffico -i lo --allow arp nop --dry-run
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: --allow/--permit and positional PROGRAM arguments are mutually exclusive" ]
+}
+
+@test "--dry-run requires Intent mode" {
+    run traffico -i lo --dry-run nop
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: --dry-run currently requires --allow or --permit" ]
+}
+
+@test "--explain requires Intent mode" {
+    run traffico -i lo --explain nop
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: --explain currently requires --allow or --permit" ]
+}
+
+@test "--explain=dag is reserved for future Intent debug output" {
+    run traffico -i lo --allow arp --dry-run --explain=dag
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: unsupported --explain mode: 'dag'" ]
+}
+
+@test "--explain=intent is the explicit Intent explain mode" {
+    run traffico -i lo --allow arp --dry-run --explain=intent
+    [ $status -eq 0 ]
+    [[ "$output" == *"traffico intent"* ]]
+    [[ "$output" == *"permitted traffic:"* ]]
+}
+
+@test "Intent mode rejects ingress until designed" {
+    run traffico -i lo --at ingress --allow arp --dry-run
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: intent currently supports --at egress only" ]
+}
+
+@test "--allow rejects malformed values" {
+    run traffico -i lo --allow tcp/10.0.0.10 --dry-run
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: invalid permit: 'tcp/10.0.0.10'" ]
+}
+
+@test "--allow rejects unsupported Intent value" {
+    run traffico -i lo --allow icmp/10.0.0.10 --dry-run
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: unsupported permit: 'icmp/10.0.0.10'" ]
+}
+
+@test "--allow rejects duplicate permits" {
+    run traffico -i lo --allow arp --allow arp --dry-run
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: duplicate permit: 'arp'" ]
+}
+
+@test "--allow rejects too many permits" {
+    args=(-i lo --dry-run)
+    for port in {10000..10032}; do
+        args+=(--allow "tcp/10.0.0.10:${port}")
+    done
+
+    run traffico "${args[@]}"
+    [ $status -eq 1 ]
+    [ "${lines[0]}" == "traffico: too many permits: 'tcp/10.0.0.10:10032'" ]
 }
 
 @test "invalid option" {

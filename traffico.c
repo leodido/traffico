@@ -12,6 +12,7 @@
 #include <bpf/libbpf.h>
 
 #include "api.h"
+#include "api/dag.h"
 #include "api/input_parse.h"
 #include "chain.h"
 
@@ -40,6 +41,17 @@ const char OPT_NO_CLEANUP_LONG[] = "no-cleanup";
 #define OPT_CHAIN_KEY 0x82
 const char OPT_CHAIN_LONG[] = "chain";
 const char OPT_CHAIN_ARG[] = "PROG:INPUT,...";
+#define OPT_ALLOW_KEY 0x83
+const char OPT_ALLOW_LONG[] = "allow";
+const char OPT_ALLOW_ARG[] = "PERMIT";
+#define OPT_PERMIT_KEY 0x84
+const char OPT_PERMIT_LONG[] = "permit";
+const char OPT_PERMIT_ARG[] = "PERMIT";
+#define OPT_DRY_RUN_KEY 0x85
+const char OPT_DRY_RUN_LONG[] = "dry-run";
+#define OPT_EXPLAIN_KEY 0x86
+const char OPT_EXPLAIN_LONG[] = "explain";
+const char OPT_EXPLAIN_ARG[] = "intent";
 
 const struct argp_option argp_opts[] = {
 
@@ -49,6 +61,10 @@ const struct argp_option argp_opts[] = {
     {OPT_ATTACH_LONG, OPT_ATTACH_KEY, OPT_ATTACH_ARG, 0, "Where to attach the filter (defaults to egress)", 1},
     {OPT_NO_CLEANUP_LONG, OPT_NO_CLEANUP_KEY, NULL, 0, "Do not detach the TC hook and filter at the exit", 1},
     {OPT_CHAIN_LONG, OPT_CHAIN_KEY, OPT_CHAIN_ARG, 0, "Attach a chain of programs (e.g., allow_ipv4:10.0.0.1,allow_port:8080)", 1},
+    {OPT_ALLOW_LONG, OPT_ALLOW_KEY, OPT_ALLOW_ARG, 0, "Add an Intent permit", 1},
+    {OPT_PERMIT_LONG, OPT_PERMIT_KEY, OPT_PERMIT_ARG, 0, "Alias for --allow", 1},
+    {OPT_DRY_RUN_LONG, OPT_DRY_RUN_KEY, NULL, 0, "Validate Intent without attaching", 1},
+    {OPT_EXPLAIN_LONG, OPT_EXPLAIN_KEY, OPT_EXPLAIN_ARG, OPTION_ARG_OPTIONAL, "Print normalized Intent", 1},
     {"", 0, 0, OPTION_DOC, 0, 0},
     {0} // .
 
@@ -58,6 +74,10 @@ static struct config g_config;
 static struct chain_entry g_chain[MAX_CHAIN_LEN];
 static int g_chain_len = 0;
 static char *g_chain_arg = NULL;
+static struct intent g_intent;
+static bool g_intent_mode = false;
+static bool g_intent_dry_run = false;
+static bool g_intent_explain = false;
 
 #define log_erro(fmt, ...) \
     log_err(&g_config, fmt, ##__VA_ARGS__);
@@ -108,6 +128,7 @@ static error_t parse_cli(int key, char *arg, struct argp_state *state)
 {
     int ifindex;
     int p;
+    const char *err_msg = NULL;
     switch (key)
     {
 
@@ -115,10 +136,15 @@ static error_t parse_cli(int key, char *arg, struct argp_state *state)
     case ARGP_KEY_INIT:
         g_config.attach_point = BPF_TC_EGRESS;
         g_config.ifindex = 0;
+        g_config.ifname[0] = '\0';
         g_config.cleanup_on_exit = true;
         g_config.verbose = false;
         g_config.err_stream = state->err_stream = stderr;
         g_config.out_stream = state->out_stream = stdout;
+        intent_init(&g_intent, INTENT_DIRECTION_EGRESS);
+        g_intent_mode = false;
+        g_intent_dry_run = false;
+        g_intent_explain = false;
         break;
 
     // Options
@@ -154,6 +180,24 @@ static error_t parse_cli(int key, char *arg, struct argp_state *state)
     case OPT_CHAIN_KEY:
         g_chain_arg = arg;
         break;
+    case OPT_ALLOW_KEY:
+    case OPT_PERMIT_KEY:
+        g_intent_mode = true;
+        if (intent_add_permit(&g_intent, arg, &err_msg) != 0)
+        {
+            argp_error(state, "%s: '%s'", err_msg, arg);
+        }
+        break;
+    case OPT_DRY_RUN_KEY:
+        g_intent_dry_run = true;
+        break;
+    case OPT_EXPLAIN_KEY:
+        g_intent_explain = true;
+        if (arg && strcmp(arg, "intent") != 0)
+        {
+            argp_error(state, "unsupported --explain mode: '%s'", arg);
+        }
+        break;
 
     // Arguments
     case ARGP_KEY_ARG:
@@ -183,8 +227,38 @@ static error_t parse_cli(int key, char *arg, struct argp_state *state)
         break;
 
     case ARGP_KEY_END:
-        // In chain mode, positional args are not required
-        if (!g_chain_arg)
+        if (g_intent_mode && g_chain_arg)
+        {
+            argp_error(state, "--allow/--permit and --chain are mutually exclusive");
+        }
+        if (g_intent_mode && state->arg_num > 0)
+        {
+            argp_error(state, "--allow/--permit and positional PROGRAM arguments are mutually exclusive");
+        }
+        if (g_intent_dry_run && !g_intent_mode)
+        {
+            argp_error(state, "--dry-run currently requires --allow or --permit");
+        }
+        if (g_intent_explain && !g_intent_mode)
+        {
+            argp_error(state, "--explain currently requires --allow or --permit");
+        }
+        if (g_intent_mode)
+        {
+            /* Normalize here so dry-run, explain, and attach share one order. */
+            if (g_config.attach_point == BPF_TC_INGRESS)
+                g_intent.direction = INTENT_DIRECTION_INGRESS;
+            else
+                g_intent.direction = INTENT_DIRECTION_EGRESS;
+            intent_normalize(&g_intent);
+        }
+        if (g_intent_mode && g_config.attach_point != BPF_TC_EGRESS)
+        {
+            argp_error(state, "intent currently supports --at egress only");
+        }
+
+        // In chain or Intent mode, positional args are not required
+        if (!g_chain_arg && !g_intent_mode)
         {
             if (state->arg_num == 0)
             {
@@ -203,8 +277,11 @@ static error_t parse_cli(int key, char *arg, struct argp_state *state)
 
     // Final settings, validations
     case ARGP_KEY_FINI:
-        // Fallback to the default gateway interface by default
-        if (g_config.ifindex == 0)
+        /*
+         * Dry-run compiles Intent only.
+         * Live attach and legacy modes still need a concrete interface.
+         */
+        if (g_config.ifindex == 0 && !(g_intent_mode && g_intent_dry_run))
         {
             if (get_gateway_iface(g_config.ifname))
             {
@@ -307,7 +384,7 @@ static error_t parse_cli(int key, char *arg, struct argp_state *state)
                     argp_error(state, "%s", validation_err);
             }
         }
-        else
+        else if (!g_intent_mode)
         {
             // Single program mode: parse input value
             if (g_config.input_arg)
@@ -334,7 +411,7 @@ static error_t parse_cli(int key, char *arg, struct argp_state *state)
 static const struct argp argp = {
     .options = argp_opts,
     .parser = parse_cli,
-    .args_doc = "PROGRAM [INPUT]",
+    .args_doc = "[PROGRAM [INPUT]]",
     .doc = argp_program_doc,
 };
 
@@ -369,6 +446,62 @@ int await(struct bpf_tc_hook hook, struct bpf_tc_opts opts)
     return 0;
 }
 
+static int intent_validate(const char *context)
+{
+    struct decision_dag dag = {0};
+    const char *err_msg = NULL;
+
+    /*
+     * Dry-run and live rejection validate through the same DDAG path.
+     * This keeps dry-run aligned with the attach preconditions.
+     */
+    if (intent_build_dag(&g_intent, &dag, &err_msg) != 0 ||
+        intent_validate_supported_subset(&dag, &err_msg) != 0)
+    {
+        fprintf(g_config.err_stream, TOOL_NAME ": %s: %s\n", context, err_msg);
+        return 1;
+    }
+
+    return 0;
+}
+
+static void intent_explain(FILE *out)
+{
+    const char *ifname = g_config.ifname[0] ? g_config.ifname : "not attached";
+
+    /* The caller chooses stdout or stderr based on the command result. */
+    if (g_intent_explain)
+    {
+        intent_print_explain(out, ifname, &g_intent);
+        fflush(out);
+    }
+}
+
+static int intent_dry_run(void)
+{
+    if (intent_validate("intent dry-run") != 0)
+    {
+        return 1;
+    }
+
+    intent_explain(g_config.out_stream);
+    fprintf(g_config.out_stream, "intent dry-run: compiler ok\n");
+    fprintf(g_config.out_stream, "intent backend: not implemented\n");
+    return 0;
+}
+
+static int intent_reject_live_attach(void)
+{
+    if (intent_validate("intent attach") != 0)
+    {
+        return 1;
+    }
+
+    intent_explain(g_config.err_stream);
+    fprintf(g_config.err_stream, TOOL_NAME ": intent attach backend is not implemented; use --dry-run\n");
+    return 1;
+}
+
 int main(int argc, char **argv)
 {
     int err;
@@ -380,6 +513,15 @@ int main(int argc, char **argv)
     if (err)
     {
         return 1;
+    }
+
+    if (g_intent_mode && g_intent_dry_run)
+    {
+        return intent_dry_run();
+    }
+    if (g_intent_mode)
+    {
+        return intent_reject_live_attach();
     }
 
     // Setup signal handling
