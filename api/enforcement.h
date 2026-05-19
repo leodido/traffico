@@ -35,6 +35,10 @@ struct intent_enforcement_plan
 struct intent_enforcement_path
 {
     struct intent_predicate predicates[MAX_INTENT_PREDICATES];
+    /*
+     * False predicates are facts learned by taking failed branches.
+     * They prevent later ALLOW paths from becoming rectangular unions.
+     */
     struct intent_predicate false_predicates[MAX_DECISION_NODES];
     size_t predicate_count;
     size_t false_predicate_count;
@@ -222,6 +226,10 @@ static inline int intent_enforcement_add_false_predicate(struct intent_enforceme
         return -1;
     }
 
+    /*
+     * A failed branch removes matching values from later predicates.
+     * If nothing remains, that path cannot reach an ALLOW terminal.
+     */
     path->false_predicates[path->false_predicate_count] = *predicate;
     path->false_predicate_count++;
     for (size_t i = 0; i < path->predicate_count; i++)
@@ -241,6 +249,7 @@ static inline int intent_enforcement_append_rule(struct intent_enforcement_plan 
                                                  const struct intent_enforcement_rule *rule,
                                                  const char **err_msg)
 {
+    /* Different DDAG paths can collapse to the same backend row. */
     for (size_t i = 0; i < plan->rule_count; i++)
     {
         const struct intent_enforcement_rule *existing = &plan->rules[i];
@@ -275,6 +284,10 @@ static inline int intent_enforcement_emit_path(const struct intent_enforcement_p
     bool has_l4_dst_port = false;
     uint32_t eth_type = 0;
 
+    /*
+     * The first backend-neutral plan emits ARP rows and IPv4 L4 rows.
+     * Everything else stays rejected before a backend sees it.
+     */
     for (size_t i = 0; i < path->predicate_count; i++)
     {
         const struct intent_predicate *predicate = &path->predicates[i];
@@ -380,6 +393,10 @@ static inline int intent_enforcement_walk_node(const struct decision_dag *dag,
     int false_status = 0;
     int true_status = 0;
 
+    /*
+     * The true path carries the current predicate.
+     * The false path records that the predicate did not match.
+     */
     false_status = intent_enforcement_add_false_predicate(&false_path,
                                                           &node->predicate,
                                                           err_msg);

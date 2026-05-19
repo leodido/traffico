@@ -173,9 +173,8 @@ static int test_bpf_lowering_rejects_too_many_protos(void)
 
 static int test_bpf_hook_cleanup_policy(void)
 {
-    // The live suite cannot deterministically force bpf_tc_attach() to fail
-    // after this process creates clsact without adding fault injection. Keep
-    // the post-hook-create attach-failure cleanup contract explicit here.
+    // The live suite cannot force bpf_tc_attach() to fail deterministically.
+    // This unit test keeps the post-hook-create cleanup contract explicit.
     CHECK(!intent_bpf_should_destroy_hook(true, false, false));
     CHECK(!intent_bpf_should_destroy_hook(true, false, true));
     CHECK(!intent_bpf_should_destroy_hook(false, false, false));
