@@ -21,6 +21,17 @@
             return 1;                                                          \
     } while (0)
 
+static void set_eq_predicate(struct intent_predicate *predicate,
+                             enum intent_predicate_field field,
+                             uint32_t value)
+{
+    memset(predicate, 0, sizeof(*predicate));
+    predicate->field = field;
+    predicate->op = INTENT_OP_EQ;
+    predicate->values.count = 1;
+    predicate->values.values[0] = value;
+}
+
 static int test_decision_dag_builds_predicate_chain(void)
 {
     struct intent intent = {0};
@@ -382,6 +393,61 @@ static int test_decision_dag_rejects_unguarded_ip_predicates(void)
     return 0;
 }
 
+static int test_decision_dag_rejects_incomplete_allow_paths(void)
+{
+    struct decision_dag dag = {0};
+    const char *err = NULL;
+
+    dag.direction = INTENT_DIRECTION_EGRESS;
+    dag.root = 0;
+    dag.node_count = 1;
+    set_eq_predicate(&dag.nodes[0].predicate, INTENT_FIELD_ETH_TYPE, INTENT_ETH_P_IP);
+    dag.nodes[0].on_true = decision_edge_terminal(DECISION_TERMINAL_ALLOW);
+    dag.nodes[0].on_false = decision_edge_terminal(DECISION_TERMINAL_DROP);
+    dag.nodes[0].on_error = decision_edge_terminal(DECISION_TERMINAL_DROP);
+
+    CHECK(intent_validate_supported_subset(&dag, &err) == -1);
+    CHECK(strcmp(err, "Decision DAG allow path is outside the first supported subset") == 0);
+
+    dag = (struct decision_dag){0};
+    dag.direction = INTENT_DIRECTION_EGRESS;
+    dag.root = 0;
+    dag.node_count = 2;
+    set_eq_predicate(&dag.nodes[0].predicate, INTENT_FIELD_ETH_TYPE, INTENT_ETH_P_IP);
+    dag.nodes[0].on_true = decision_edge_node(1);
+    dag.nodes[0].on_false = decision_edge_terminal(DECISION_TERMINAL_DROP);
+    dag.nodes[0].on_error = decision_edge_terminal(DECISION_TERMINAL_DROP);
+    set_eq_predicate(&dag.nodes[1].predicate, INTENT_FIELD_IP_DST, 0x0a00000a);
+    dag.nodes[1].on_true = decision_edge_terminal(DECISION_TERMINAL_ALLOW);
+    dag.nodes[1].on_false = decision_edge_terminal(DECISION_TERMINAL_DROP);
+    dag.nodes[1].on_error = decision_edge_terminal(DECISION_TERMINAL_DROP);
+
+    CHECK(intent_validate_supported_subset(&dag, &err) == -1);
+    CHECK(strcmp(err, "Decision DAG allow path is outside the first supported subset") == 0);
+
+    dag = (struct decision_dag){0};
+    dag.direction = INTENT_DIRECTION_EGRESS;
+    dag.root = 0;
+    dag.node_count = 3;
+    set_eq_predicate(&dag.nodes[0].predicate, INTENT_FIELD_ETH_TYPE, INTENT_ETH_P_IP);
+    dag.nodes[0].on_true = decision_edge_node(1);
+    dag.nodes[0].on_false = decision_edge_terminal(DECISION_TERMINAL_DROP);
+    dag.nodes[0].on_error = decision_edge_terminal(DECISION_TERMINAL_DROP);
+    set_eq_predicate(&dag.nodes[1].predicate, INTENT_FIELD_IP_PROTO, INTENT_IPPROTO_TCP);
+    dag.nodes[1].on_true = decision_edge_node(2);
+    dag.nodes[1].on_false = decision_edge_terminal(DECISION_TERMINAL_DROP);
+    dag.nodes[1].on_error = decision_edge_terminal(DECISION_TERMINAL_DROP);
+    set_eq_predicate(&dag.nodes[2].predicate, INTENT_FIELD_L4_DST_PORT, 443);
+    dag.nodes[2].on_true = decision_edge_terminal(DECISION_TERMINAL_ALLOW);
+    dag.nodes[2].on_false = decision_edge_terminal(DECISION_TERMINAL_DROP);
+    dag.nodes[2].on_error = decision_edge_terminal(DECISION_TERMINAL_DROP);
+
+    CHECK(intent_validate_supported_subset(&dag, &err) == -1);
+    CHECK(strcmp(err, "Decision DAG allow path is outside the first supported subset") == 0);
+
+    return 0;
+}
+
 int main(void)
 {
     RUN_TEST(test_decision_dag_builds_predicate_chain);
@@ -401,6 +467,7 @@ int main(void)
     RUN_TEST(test_decision_dag_rejects_unsupported_subset_predicates);
     RUN_TEST(test_decision_dag_rejects_unguarded_l4_port_predicates);
     RUN_TEST(test_decision_dag_rejects_unguarded_ip_predicates);
+    RUN_TEST(test_decision_dag_rejects_incomplete_allow_paths);
     puts("ddag unit tests: ok");
     return 0;
 }
