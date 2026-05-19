@@ -20,7 +20,7 @@ enum decision_terminal
 
 struct decision_edge
 {
-    /* When terminal is not NONE, node must stay zero. */
+    /* Terminal edges do not also carry a node target. */
     size_t node;
     enum decision_terminal terminal;
 };
@@ -116,9 +116,10 @@ static inline int intent_build_dag(const struct intent *intent,
     dag->node_count = node_count;
 
     /*
-     * First implementation emits one linear predicate chain per permit. Common
-     * prefix sharing can reduce repeated checks later without changing DDAG
-     * semantics.
+     * Each permit lowers to one linear predicate chain.
+     * A false predicate falls through to the next permit chain.
+     * The last permit falls through to DROP.
+     * Shared prefixes are intentionally not merged yet.
      */
     for (size_t i = 0; i < intent->permit_count; i++)
     {
@@ -393,6 +394,7 @@ static inline bool intent_predicate_is_l4_proto_guard(const struct intent_predic
 
 struct intent_subset_context
 {
+    /* These guards are known only on the current true path. */
     bool has_ipv4;
     bool has_l4_proto;
 };
@@ -434,7 +436,10 @@ static inline int intent_validate_supported_path(const struct decision_dag *dag,
 
     if (memo[node_index][context_index] == 1)
     {
-        /* Defense-in-depth: the public entrypoint validates acyclicity first. */
+        /*
+         * The public entrypoint validates acyclicity first.
+         * Keep this check because tests call the helper through crafted DAGs.
+         */
         *err_msg = "Decision DAG must be acyclic";
         return -1;
     }
