@@ -170,14 +170,63 @@ static inline int intent_predicate_compare(const struct intent_predicate *left,
     return 0;
 }
 
+static inline int intent_value_qsort_compare(const void *left,
+                                             const void *right)
+{
+    uint32_t a = *(const uint32_t *)left;
+    uint32_t b = *(const uint32_t *)right;
+
+    if (a == b)
+        return 0;
+    return a < b ? -1 : 1;
+}
+
 static inline int intent_predicate_qsort_compare(const void *left,
                                                  const void *right)
 {
     return intent_predicate_compare(left, right);
 }
 
+static inline void intent_normalize_predicate_values(struct intent_predicate *predicate)
+{
+    qsort(predicate->values.values,
+          predicate->values.count,
+          sizeof(predicate->values.values[0]),
+          intent_value_qsort_compare);
+}
+
+static inline int intent_validate_predicate_shape(const struct intent_predicate *predicate,
+                                                  const char **err_msg)
+{
+    if (predicate->values.count == 0 ||
+        predicate->values.count > MAX_INTENT_SET_VALUES)
+        return intent_fail(err_msg, "invalid permit");
+
+    if (predicate->op == INTENT_OP_EQ)
+    {
+        if (predicate->values.count != 1)
+            return intent_fail(err_msg, "invalid permit");
+        return 0;
+    }
+
+    if (predicate->op != INTENT_OP_IN)
+        return intent_fail(err_msg, "invalid permit");
+
+    if (predicate->values.count < 2)
+        return intent_fail(err_msg, "invalid permit");
+    for (size_t i = 1; i < predicate->values.count; i++)
+    {
+        if (predicate->values.values[i - 1] == predicate->values.values[i])
+            return intent_fail(err_msg, "invalid permit");
+    }
+    return 0;
+}
+
 static inline void intent_normalize_permit(struct intent_permit *permit)
 {
+    for (size_t i = 0; i < permit->predicate_count; i++)
+        intent_normalize_predicate_values(&permit->predicates[i]);
+
     /* Canonical predicate order makes duplicate detection order independent. */
     qsort(permit->predicates,
           permit->predicate_count,
@@ -206,18 +255,25 @@ static inline int intent_add_predicate(struct intent_permit *permit,
                                        size_t value_count,
                                        const char **err_msg)
 {
+    struct intent_predicate predicate = {0};
+
+    if (!permit || !values)
+        return intent_fail(err_msg, "invalid permit");
     if (permit->predicate_count >= MAX_INTENT_PREDICATES ||
         value_count == 0 ||
         value_count > MAX_INTENT_SET_VALUES)
         return intent_fail(err_msg, "invalid permit");
 
-    struct intent_predicate *predicate = &permit->predicates[permit->predicate_count];
-    predicate->field = field;
-    predicate->op = op;
-    predicate->values.count = value_count;
+    predicate.field = field;
+    predicate.op = op;
+    predicate.values.count = value_count;
     for (size_t i = 0; i < value_count; i++)
-        predicate->values.values[i] = values[i];
+        predicate.values.values[i] = values[i];
+    intent_normalize_predicate_values(&predicate);
+    if (intent_validate_predicate_shape(&predicate, err_msg) != 0)
+        return -1;
 
+    permit->predicates[permit->predicate_count] = predicate;
     permit->predicate_count++;
     return 0;
 }
@@ -267,6 +323,11 @@ static inline int intent_append_permit(struct intent *intent,
 
     if (normalized.predicate_count == 0)
         return intent_fail(err_msg, "permit has no predicates");
+    for (size_t i = 0; i < normalized.predicate_count; i++)
+    {
+        if (intent_validate_predicate_shape(&normalized.predicates[i], err_msg) != 0)
+            return -1;
+    }
     if (intent_has_permit(intent, &normalized))
         return intent_fail(err_msg, "duplicate permit");
     if (intent->permit_count >= MAX_INTENT_PERMITS)
@@ -336,7 +397,11 @@ static inline int intent_add_permit(struct intent *intent,
     char *kind = NULL;
     char *target = NULL;
     char *port = NULL;
-    size_t arg_len = strlen(arg);
+    size_t arg_len = 0;
+
+    if (!arg)
+        return intent_fail(err_msg, "invalid permit");
+    arg_len = strlen(arg);
 
     if (arg_len >= sizeof(buf))
         return intent_fail(err_msg, "permit too long");
