@@ -24,6 +24,12 @@ static int attach_intent_bpf(struct config *conf,
         return 1;
     }
 
+    if (plan->rule_count > INTENT_BPF_MAX_RULES)
+    {
+        log_err(conf, "fail: intent BPF plan exceeds rule limit\n");
+        return 1;
+    }
+
     struct intent_bpf *obj = intent_bpf__open();
     if (!obj)
     {
