@@ -258,6 +258,15 @@ teardown() {
     echo "# blocked IPv4 packet with IP options to ${VETH_ADDR}" >&3
 }
 
+@test "block_ipv4: allows invalid IHL (fail-open boundary)" {
+    ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress block_ipv4 "${VETH_ADDR}" >/dev/null 3>&- &
+    sleep 1
+
+    assert_packet_seen "${NETNS}" 1004 \
+        --type ipv4-invalid-ihl --dst-ip "${VETH_ADDR}"
+    echo "# allowed malformed IPv4 header because block_ipv4 cannot prove a match" >&3
+}
+
 @test "block_ipv4: drops fragmented packet to blocked IP" {
     ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress block_ipv4 "${VETH_ADDR}" >/dev/null 3>&- &
     sleep 1
@@ -311,6 +320,15 @@ teardown() {
     assert_packet_seen "${NETNS}" 2004 \
         --type fragment-subsequent --dst-ip "${VETH_ADDR}" --frag-offset 10
     echo "# allowed subsequent fragment (fail-open for block_*)" >&3
+}
+
+@test "block_port: allows truncated L4 header (fail-open boundary)" {
+    ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress block_port 8787 >/dev/null 3>&- &
+    sleep 1
+
+    assert_packet_seen "${NETNS}" 2005 \
+        --type ipv4-truncated-l4 --dst-ip "${VETH_ADDR}"
+    echo "# allowed truncated L4 header because block_port cannot read the destination port" >&3
 }
 
 # --------------------------------------------------------------------------
@@ -384,4 +402,13 @@ teardown() {
     assert_packet_seen "${NETNS}" 3008 \
         --type fragment-subsequent --dst-ip 10.0.0.1 --frag-offset 10
     echo "# allowed subsequent fragment to 10.0.0.1 (fail-open)" >&3
+}
+
+@test "block_private_ipv4: allows truncated TCP header to private subnet (fail-open boundary)" {
+    ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress block_private_ipv4 >/dev/null 3>&- &
+    sleep 1
+
+    assert_packet_seen "${NETNS}" 3009 \
+        --type ipv4-truncated-l4 --dst-ip 10.0.0.1
+    echo "# allowed truncated TCP header because block_private_ipv4 cannot inspect source port" >&3
 }
