@@ -43,15 +43,35 @@ scapy_needs_marker_match() {
 start_sniffer() {
   local iface="$1" ip_id="$2" src_ip="${3:-}" dst_ip="${4:-}" match_marker="${5:-}"
   local sniff_args=(--iface "$iface" --ip-id "$ip_id" --timeout "$SCAPY_SNIFF_TIMEOUT")
+  local i
   [ -n "$src_ip" ] && sniff_args+=(--src-ip "$src_ip")
   [ -n "$dst_ip" ] && sniff_args+=(--dst-ip "$dst_ip")
   [ "$match_marker" = "1" ] && sniff_args+=(--match-marker)
 
+  SNIFFER_READY_FILE="$BATS_TEST_TMPDIR/sniffer_ready"
+  SNIFFER_STATUS_FILE="$BATS_TEST_TMPDIR/sniffer_status"
+  rm -f "$SNIFFER_READY_FILE" "$SNIFFER_STATUS_FILE"
+  sniff_args+=(--ready-file "$SNIFFER_READY_FILE")
+
   python3 "$SCAPY_HELPER" sniff "${sniff_args[@]}" &
   SNIFFER_PID=$!
-  SNIFFER_STATUS_FILE="$BATS_TEST_TMPDIR/sniffer_status"
-  # Brief settle time for the sniffer to attach
-  sleep 0.3
+
+  # Scapy opens the raw socket asynchronously.
+  # Wait for its started callback before sending the packet.
+  for i in {1..50}; do
+    [ -f "$SNIFFER_READY_FILE" ] && return 0
+    if ! kill -0 "$SNIFFER_PID" 2>/dev/null; then
+      wait "$SNIFFER_PID" || true
+      echo "# FAIL: sniffer exited before it was ready on $iface" >&3
+      return 1
+    fi
+    sleep 0.1
+  done
+
+  echo "# FAIL: sniffer did not become ready on $iface" >&3
+  kill "$SNIFFER_PID" 2>/dev/null || true
+  wait "$SNIFFER_PID" 2>/dev/null || true
+  return 1
 }
 
 # Wait for the background sniffer and capture its exit code.
@@ -88,7 +108,7 @@ assert_packet_seen() {
   local match_marker=0
   scapy_needs_marker_match "$@" && match_marker=1
 
-  start_sniffer "$VETH" "$ip_id" "" "" "$match_marker"
+  start_sniffer "$VETH" "$ip_id" "" "" "$match_marker" || return 1
   scapy_send "$netns" "$PEER" --ip-id "$ip_id" "$@"
   wait_sniffer
   local rc=$?
@@ -106,7 +126,7 @@ assert_packet_blocked() {
   local match_marker=0
   scapy_needs_marker_match "$@" && match_marker=1
 
-  start_sniffer "$VETH" "$ip_id" "" "" "$match_marker"
+  start_sniffer "$VETH" "$ip_id" "" "" "$match_marker" || return 1
   scapy_send "$netns" "$PEER" --ip-id "$ip_id" "$@"
   local rc=0
   wait "$SNIFFER_PID" || rc=$?
