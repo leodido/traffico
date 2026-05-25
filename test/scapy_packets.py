@@ -33,6 +33,15 @@ def marker_for(ip_id):
     return b"TRAFFICO" + struct.pack("!H", ip_id & 0xFFFF)
 
 
+def write_ready_file(path):
+    """Signal that sniff() has opened its socket and started listening."""
+    if not path:
+        return
+
+    with open(path, "w", encoding="utf-8") as ready:
+        ready.write("ready\n")
+
+
 def ether(eth_type):
     """Build a broadcast Ethernet header for raw L2 test packets."""
     return Ether(dst="ff:ff:ff:ff:ff:ff", type=eth_type)
@@ -241,6 +250,7 @@ def cmd_sniff(args):
         count=1,
         lfilter=match_filter,
         store=True,
+        started_callback=lambda: write_ready_file(args.ready_file),
     )
 
     if len(result) > 0:
@@ -288,6 +298,8 @@ def main():
     p_sniff.add_argument("--dst-ip", default=None)
     p_sniff.add_argument("--match-marker", action="store_true",
                          help="Also match the raw payload marker for packets without a reliable IPv4 ID")
+    p_sniff.add_argument("--ready-file", default=None,
+                         help="Write this file once the sniffer is listening")
 
     args = parser.parse_args()
 

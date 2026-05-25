@@ -188,7 +188,7 @@ assert_l4_prefix_blocked() {
     local dst_port="$6"
     local rc=0
 
-    start_sniffer "$VETH" "$ip_id"
+    start_sniffer "$VETH" "$ip_id" || return 1
     send_ipv4_l4_prefix "${netns}" "${ip_id}" "${proto}" "${total_length}" "${src_port}" "${dst_port}"
     wait "$SNIFFER_PID" || rc=$?
     if [ $rc -eq 0 ]; then
