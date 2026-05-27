@@ -3,6 +3,7 @@
 
 #include "api/dag.h"
 #include "api/enforcement.h"
+#include "intent_semantics.h"
 
 #define CHECK(condition)                                                       \
     do                                                                         \
@@ -53,6 +54,55 @@ static void set_in2_predicate(struct intent_predicate *predicate,
     predicate->values.count = 2;
     predicate->values.values[0] = first;
     predicate->values.values[1] = second;
+}
+
+static bool test_enforcement_rule_matches_packet(const struct intent_enforcement_rule *rule,
+                                                 const struct intent_test_packet *packet)
+{
+    if (rule->kind == INTENT_ENFORCEMENT_RULE_ARP)
+        return packet->kind == INTENT_TEST_PACKET_ARP;
+
+    if (rule->kind != INTENT_ENFORCEMENT_RULE_IPV4_L4 ||
+        packet->kind != INTENT_TEST_PACKET_IPV4_L4 ||
+        rule->ip_dst != packet->ip_dst)
+        return false;
+
+    bool proto_matches = false;
+    for (size_t i = 0; i < rule->ip_proto_count; i++)
+        proto_matches = proto_matches || rule->ip_protos[i] == packet->ip_proto;
+    if (!proto_matches)
+        return false;
+
+    if (rule->l4_dst_port_mode == INTENT_L4_DST_PORT_ANY)
+        return true;
+    return rule->l4_dst_port_mode == INTENT_L4_DST_PORT_EXACT &&
+           rule->l4_dst_port == packet->l4_dst_port;
+}
+
+static enum intent_action test_enforcement_decide(const struct intent_enforcement_plan *plan,
+                                                  struct intent_test_packet packet)
+{
+    if (packet.kind == INTENT_TEST_PACKET_MALFORMED ||
+        packet.kind == INTENT_TEST_PACKET_UNCLASSIFIABLE)
+        return INTENT_ACTION_DROP;
+
+    for (size_t i = 0; i < plan->rule_count; i++)
+    {
+        if (!test_enforcement_rule_matches_packet(&plan->rules[i], &packet))
+            continue;
+        if (plan->rules[i].action == INTENT_ENFORCEMENT_DROP)
+            return INTENT_ACTION_DROP;
+    }
+
+    for (size_t i = 0; i < plan->rule_count; i++)
+    {
+        if (!test_enforcement_rule_matches_packet(&plan->rules[i], &packet))
+            continue;
+        if (plan->rules[i].action == INTENT_ENFORCEMENT_ALLOW)
+            return INTENT_ACTION_ALLOW;
+    }
+
+    return INTENT_ACTION_DROP;
 }
 
 static int test_enforcement_extracts_arp_rule(void)
@@ -109,6 +159,86 @@ static int test_enforcement_extracts_host_wide_tcp_any_port_rule(void)
     CHECK(plan.rules[0].l4_dst_port == 0);
     CHECK(plan.rules[0].ip_proto_count == 1);
     CHECK(plan.rules[0].ip_protos[0] == INTENT_IPPROTO_TCP);
+    return 0;
+}
+
+static int test_enforcement_extracts_drop_before_broad_allow(void)
+{
+    struct intent intent = {0};
+    struct intent_enforcement_plan plan = {0};
+    const char *err = NULL;
+
+    intent_init(&intent, INTENT_DIRECTION_EGRESS);
+    CHECK(intent_add_permit(&intent, "tcp/10.0.0.10", &err) == 0);
+    CHECK(intent_add_forbid(&intent, "tcp/10.0.0.10:22", &err) == 0);
+
+    CHECK(build_plan(&intent, &plan, &err) == 0);
+    CHECK(plan.rule_count == 2);
+
+    CHECK(plan.rules[0].action == INTENT_ENFORCEMENT_DROP);
+    CHECK(plan.rules[0].l4_dst_port_mode == INTENT_L4_DST_PORT_EXACT);
+    CHECK(plan.rules[0].l4_dst_port == 22);
+
+    CHECK(plan.rules[1].action == INTENT_ENFORCEMENT_ALLOW);
+    CHECK(plan.rules[1].l4_dst_port_mode == INTENT_L4_DST_PORT_ANY);
+    return 0;
+}
+
+static int test_enforcement_matches_intent_oracle_for_golden_policy(void)
+{
+    struct intent intent = {0};
+    struct intent_enforcement_plan plan = {0};
+    const char *err = NULL;
+    struct intent_test_packet packets[] = {
+        intent_test_packet_arp(),
+        intent_test_packet_tcp(0x0a00000a, 22),
+        intent_test_packet_tcp(0x0a00000a, 443),
+        intent_test_packet_udp(0x0a00000a, 443),
+        intent_test_packet_tcp(0x0a000014, 443),
+        intent_test_packet_malformed(),
+        intent_test_packet_unclassifiable(),
+    };
+
+    intent_init(&intent, INTENT_DIRECTION_EGRESS);
+    CHECK(intent_add_permit(&intent, "arp", &err) == 0);
+    CHECK(intent_add_permit(&intent, "tcp/10.0.0.10", &err) == 0);
+    CHECK(intent_add_forbid(&intent, "tcp/10.0.0.10:22", &err) == 0);
+    intent_normalize(&intent);
+
+    CHECK(build_plan(&intent, &plan, &err) == 0);
+    for (size_t i = 0; i < sizeof(packets) / sizeof(packets[0]); i++)
+    {
+        CHECK(test_enforcement_decide(&plan, packets[i]) ==
+              intent_test_oracle_decide(&intent, packets[i]));
+    }
+    return 0;
+}
+
+static int test_enforcement_matches_intent_oracle_for_dns_carveout_policy(void)
+{
+    struct intent intent = {0};
+    struct intent_enforcement_plan plan = {0};
+    const char *err = NULL;
+    struct intent_test_packet packets[] = {
+        intent_test_packet_udp(0x0a000035, 53),
+        intent_test_packet_tcp(0x0a000035, 53),
+        intent_test_packet_tcp(0x0a000035, 443),
+        intent_test_packet_udp(0x0a000035, 123),
+    };
+
+    intent_init(&intent, INTENT_DIRECTION_EGRESS);
+    CHECK(intent_add_permit(&intent, "arp", &err) == 0);
+    CHECK(intent_add_permit(&intent, "tcp/10.0.0.53", &err) == 0);
+    CHECK(intent_add_permit(&intent, "udp/10.0.0.53", &err) == 0);
+    CHECK(intent_add_forbid(&intent, "dns/10.0.0.53", &err) == 0);
+    intent_normalize(&intent);
+
+    CHECK(build_plan(&intent, &plan, &err) == 0);
+    for (size_t i = 0; i < sizeof(packets) / sizeof(packets[0]); i++)
+    {
+        CHECK(test_enforcement_decide(&plan, packets[i]) ==
+              intent_test_oracle_decide(&intent, packets[i]));
+    }
     return 0;
 }
 
@@ -445,6 +575,9 @@ int main(void)
     RUN_TEST(test_enforcement_extracts_arp_rule);
     RUN_TEST(test_enforcement_extracts_tcp_ipv4_l4_rule);
     RUN_TEST(test_enforcement_extracts_host_wide_tcp_any_port_rule);
+    RUN_TEST(test_enforcement_extracts_drop_before_broad_allow);
+    RUN_TEST(test_enforcement_matches_intent_oracle_for_golden_policy);
+    RUN_TEST(test_enforcement_matches_intent_oracle_for_dns_carveout_policy);
     RUN_TEST(test_enforcement_extracts_dns_ipv4_l4_rule);
     RUN_TEST(test_enforcement_extracts_primary_scenario_rows);
     RUN_TEST(test_enforcement_preserves_prior_true_predicates_on_false_edges);

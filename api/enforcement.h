@@ -17,9 +17,16 @@ enum intent_enforcement_rule_kind
     INTENT_ENFORCEMENT_RULE_IPV4_L4 = 2,
 };
 
+enum intent_enforcement_action
+{
+    INTENT_ENFORCEMENT_DROP = 0,
+    INTENT_ENFORCEMENT_ALLOW = 1,
+};
+
 struct intent_enforcement_rule
 {
     enum intent_enforcement_rule_kind kind;
+    enum intent_enforcement_action action;
     uint32_t ip_dst;
     enum intent_l4_dst_port_mode l4_dst_port_mode;
     uint16_t l4_dst_port;
@@ -253,7 +260,8 @@ static inline int intent_enforcement_append_rule(struct intent_enforcement_plan 
     for (size_t i = 0; i < plan->rule_count; i++)
     {
         const struct intent_enforcement_rule *existing = &plan->rules[i];
-        if (existing->kind == rule->kind &&
+        if (existing->action == rule->action &&
+            existing->kind == rule->kind &&
             existing->ip_dst == rule->ip_dst &&
             existing->l4_dst_port_mode == rule->l4_dst_port_mode &&
             existing->l4_dst_port == rule->l4_dst_port &&
@@ -274,6 +282,7 @@ static inline int intent_enforcement_append_rule(struct intent_enforcement_plan 
 }
 
 static inline int intent_enforcement_emit_path(const struct intent_enforcement_path *path,
+                                               enum intent_enforcement_action action,
                                                struct intent_enforcement_plan *plan,
                                                const char **err_msg)
 {
@@ -288,6 +297,7 @@ static inline int intent_enforcement_emit_path(const struct intent_enforcement_p
      * The first backend-neutral plan emits ARP rows and IPv4 L4 rows.
      * Everything else stays rejected before a backend sees it.
      */
+    rule.action = action;
     for (size_t i = 0; i < path->predicate_count; i++)
     {
         const struct intent_predicate *predicate = &path->predicates[i];
@@ -439,11 +449,11 @@ static inline int intent_enforcement_walk_edge(const struct decision_dag *dag,
     case DECISION_TERMINAL_NONE:
         return intent_enforcement_walk_node(dag, edge->node, path, plan, err_msg);
     case DECISION_TERMINAL_ALLOW:
-        return intent_enforcement_emit_path(&path, plan, err_msg);
+        return intent_enforcement_emit_path(&path, INTENT_ENFORCEMENT_ALLOW, plan, err_msg);
     case DECISION_TERMINAL_DROP:
         return 0;
     case DECISION_TERMINAL_FORBID:
-        return intent_fail(err_msg, "forbids are not supported yet");
+        return intent_enforcement_emit_path(&path, INTENT_ENFORCEMENT_DROP, plan, err_msg);
     default:
         return intent_fail(err_msg, "enforcement path is outside the first supported subset");
     }

@@ -80,6 +80,7 @@ static int test_bpf_lowering_accepts_any_destination_port(void)
     plan.direction = INTENT_DIRECTION_EGRESS;
     plan.rule_count = 1;
     plan.rules[0].kind = INTENT_ENFORCEMENT_RULE_IPV4_L4;
+    plan.rules[0].action = INTENT_ENFORCEMENT_ALLOW;
     plan.rules[0].ip_dst = 0x0a00000a;
     plan.rules[0].l4_dst_port_mode = INTENT_L4_DST_PORT_ANY;
     plan.rules[0].ip_proto_count = 1;
@@ -96,6 +97,26 @@ static int test_bpf_lowering_accepts_any_destination_port(void)
     return 0;
 }
 
+static int test_bpf_lowering_rejects_drop_rows_until_runtime_exists(void)
+{
+    struct intent intent = {0};
+    struct decision_dag dag = {0};
+    struct intent_enforcement_plan plan = {0};
+    struct intent_bpf_plan bpf_plan = {0};
+    const char *err = NULL;
+
+    intent_init(&intent, INTENT_DIRECTION_EGRESS);
+    CHECK(intent_add_permit(&intent, "tcp/10.0.0.10", &err) == 0);
+    CHECK(intent_add_forbid(&intent, "tcp/10.0.0.10:22", &err) == 0);
+    intent_normalize(&intent);
+
+    CHECK(intent_build_dag(&intent, &dag, &err) == 0);
+    CHECK(intent_enforcement_plan_from_dag(&dag, &plan, &err) == 0);
+    CHECK(intent_bpf_plan_from_enforcement(&plan, &bpf_plan, &err) == -1);
+    CHECK(strcmp(err, "forbids are not supported yet") == 0);
+    return 0;
+}
+
 static int expect_unsupported_rule_rejected(const struct intent_enforcement_rule *rule)
 {
     struct intent_enforcement_plan plan = {0};
@@ -104,6 +125,7 @@ static int expect_unsupported_rule_rejected(const struct intent_enforcement_rule
 
     plan.rule_count = 1;
     plan.rules[0] = *rule;
+    plan.rules[0].action = INTENT_ENFORCEMENT_ALLOW;
 
     CHECK(intent_bpf_plan_from_enforcement(&plan, &bpf_plan, &err) == -1);
     CHECK(err != NULL);
@@ -233,6 +255,7 @@ int main(void)
 {
     RUN_TEST(test_bpf_lowering_preserves_correlated_rows);
     RUN_TEST(test_bpf_lowering_accepts_any_destination_port);
+    RUN_TEST(test_bpf_lowering_rejects_drop_rows_until_runtime_exists);
     RUN_TEST(test_bpf_lowering_rejects_malformed_arp_row);
     RUN_TEST(test_bpf_lowering_rejects_unsupported_proto_value);
     RUN_TEST(test_bpf_lowering_rejects_duplicate_two_entry_proto_set);

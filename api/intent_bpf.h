@@ -105,6 +105,11 @@ static inline int intent_bpf_plan_from_enforcement(const struct intent_enforceme
         const struct intent_enforcement_rule *src = &plan->rules[i];
         struct intent_bpf_rule *dst = &bpf_plan->rules[i];
 
+        if (src->action == INTENT_ENFORCEMENT_DROP)
+        {
+            return intent_fail(err_msg, "forbids are not supported yet");
+        }
+
         /* This is the BPF backend admissibility gate. */
         if (!intent_bpf_rule_supported(src))
         {
