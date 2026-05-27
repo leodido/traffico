@@ -6,21 +6,19 @@
 #include <string.h>
 
 #include "enforcement.h"
+#include "intent_bpf_uapi.h"
 
-#define INTENT_BPF_MAX_RULES MAX_INTENT_ENFORCEMENT_RULES
-#define INTENT_BPF_MAX_PROTOS MAX_INTENT_ENFORCEMENT_PROTOS
-
-enum intent_bpf_rule_kind
-{
-    INTENT_BPF_RULE_ARP = 1,
-    INTENT_BPF_RULE_IPV4_L4 = 2,
-};
+_Static_assert(MAX_INTENT_ENFORCEMENT_RULES == INTENT_BPF_MAX_RULES,
+               "enforcement and BPF rule limits must match");
+_Static_assert(MAX_INTENT_ENFORCEMENT_PROTOS == INTENT_BPF_MAX_PROTOS,
+               "enforcement and BPF proto limits must match");
 
 struct intent_bpf_rule
 {
     uint8_t kind;
     uint8_t ip_proto_count;
     uint8_t ip_protos[INTENT_BPF_MAX_PROTOS];
+    uint8_t l4_dst_port_mode;
     uint16_t l4_dst_port;
     uint32_t ip_dst;
 };
@@ -52,14 +50,29 @@ static inline bool intent_bpf_rule_supported(const struct intent_enforcement_rul
 {
     if (rule->kind == INTENT_ENFORCEMENT_RULE_ARP)
         return rule->ip_dst == 0 &&
+               rule->l4_dst_port_mode == INTENT_L4_DST_PORT_EXACT &&
                rule->l4_dst_port == 0 &&
                rule->ip_proto_count == 0;
 
     if (rule->kind != INTENT_ENFORCEMENT_RULE_IPV4_L4 ||
-        rule->l4_dst_port == 0 ||
         rule->ip_proto_count == 0 ||
         rule->ip_proto_count > INTENT_BPF_MAX_PROTOS)
         return false;
+
+    if (rule->l4_dst_port_mode == INTENT_L4_DST_PORT_EXACT)
+    {
+        if (rule->l4_dst_port == 0)
+            return false;
+    }
+    else if (rule->l4_dst_port_mode == INTENT_L4_DST_PORT_ANY)
+    {
+        if (rule->l4_dst_port != 0)
+            return false;
+    }
+    else
+    {
+        return false;
+    }
 
     for (size_t i = 0; i < rule->ip_proto_count; i++)
     {
@@ -106,7 +119,10 @@ static inline int intent_bpf_plan_from_enforcement(const struct intent_enforceme
 
         dst->kind = INTENT_BPF_RULE_IPV4_L4;
         dst->ip_dst = src->ip_dst;
-        dst->l4_dst_port = src->l4_dst_port;
+        dst->l4_dst_port_mode = (uint8_t)src->l4_dst_port_mode;
+        dst->l4_dst_port = src->l4_dst_port_mode == INTENT_L4_DST_PORT_ANY
+                               ? 0
+                               : src->l4_dst_port;
         dst->ip_proto_count = (uint8_t)src->ip_proto_count;
         for (size_t j = 0; j < src->ip_proto_count; j++)
             dst->ip_protos[j] = src->ip_protos[j];

@@ -1,5 +1,6 @@
 #include "vmlinux.h"
 #include "commons.bpf.h"
+#include "../api/intent_bpf_uapi.h"
 
 #include <bpf/bpf_endian.h>
 
@@ -9,18 +10,19 @@ struct intent_bpf_rule
 {
     __u8 kind;
     __u8 ip_proto_count;
-    __u8 ip_protos[2];
+    __u8 ip_protos[INTENT_BPF_MAX_PROTOS];
+    __u8 l4_dst_port_mode;
     __u16 l4_dst_port;
     __u32 ip_dst;
 };
 
 /* libbpf writes these read-only values before loading the program. */
 const volatile __u32 intent_rule_count = 0;
-const volatile struct intent_bpf_rule intent_rules[32] = {};
+const volatile struct intent_bpf_rule intent_rules[INTENT_BPF_MAX_RULES] = {};
 
 static __always_inline int proto_allowed(const volatile struct intent_bpf_rule *rule, __u8 proto)
 {
-    for (__u32 i = 0; i < 2; i++)
+    for (__u32 i = 0; i < INTENT_BPF_MAX_PROTOS; i++)
     {
         if (i >= rule->ip_proto_count)
             break;
@@ -37,6 +39,9 @@ int intent(struct __sk_buff *skb)
     void *data = (void *)(unsigned long long)skb->data;
     struct ethhdr *eth = data;
     const int l3_offset = sizeof(*eth);
+
+    if (intent_rule_count > INTENT_BPF_MAX_RULES)
+        return TC_ACT_SHOT;
 
     /* Intent allowlists fail closed on packets that cannot be classified. */
     if (data + l3_offset > data_end)
@@ -55,11 +60,11 @@ int intent(struct __sk_buff *skb)
         if (data + l3_offset + arp_len > data_end)
             return TC_ACT_SHOT;
 
-        for (__u32 i = 0; i < 32; i++)
+        for (__u32 i = 0; i < INTENT_BPF_MAX_RULES; i++)
         {
             if (i >= intent_rule_count)
                 break;
-            if (intent_rules[i].kind == 1)
+            if (intent_rules[i].kind == INTENT_BPF_RULE_ARP)
                 return TC_ACT_OK;
         }
         return TC_ACT_SHOT;
@@ -106,17 +111,20 @@ int intent(struct __sk_buff *skb)
     __u32 dst_ip = bpf_ntohl(ip->daddr);
 
     /* Rules are correlated tuples, not independent allow sets. */
-    for (__u32 i = 0; i < 32; i++)
+    for (__u32 i = 0; i < INTENT_BPF_MAX_RULES; i++)
     {
         if (i >= intent_rule_count)
             break;
 
         const volatile struct intent_bpf_rule *rule = &intent_rules[i];
-        if (rule->kind != 2)
+        if (rule->kind != INTENT_BPF_RULE_IPV4_L4)
             continue;
-        if (rule->ip_dst == dst_ip &&
-            rule->l4_dst_port == dst_port &&
-            proto_allowed(rule, ip->protocol))
+        if (rule->ip_dst != dst_ip || !proto_allowed(rule, ip->protocol))
+            continue;
+        if (rule->l4_dst_port_mode == INTENT_L4_DST_PORT_ANY)
+            return TC_ACT_OK;
+        if (rule->l4_dst_port_mode == INTENT_L4_DST_PORT_EXACT &&
+            rule->l4_dst_port == dst_port)
             return TC_ACT_OK;
     }
 

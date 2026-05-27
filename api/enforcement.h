@@ -6,8 +6,9 @@
 #include <string.h>
 
 #include "dag.h"
+#include "intent_l4.h"
 
-#define MAX_INTENT_ENFORCEMENT_RULES MAX_INTENT_PERMITS
+#define MAX_INTENT_ENFORCEMENT_RULES (MAX_INTENT_PERMITS + MAX_INTENT_FORBIDS)
 #define MAX_INTENT_ENFORCEMENT_PROTOS 2
 
 enum intent_enforcement_rule_kind
@@ -20,6 +21,7 @@ struct intent_enforcement_rule
 {
     enum intent_enforcement_rule_kind kind;
     uint32_t ip_dst;
+    enum intent_l4_dst_port_mode l4_dst_port_mode;
     uint16_t l4_dst_port;
     uint8_t ip_protos[MAX_INTENT_ENFORCEMENT_PROTOS];
     size_t ip_proto_count;
@@ -253,6 +255,7 @@ static inline int intent_enforcement_append_rule(struct intent_enforcement_plan 
         const struct intent_enforcement_rule *existing = &plan->rules[i];
         if (existing->kind == rule->kind &&
             existing->ip_dst == rule->ip_dst &&
+            existing->l4_dst_port_mode == rule->l4_dst_port_mode &&
             existing->l4_dst_port == rule->l4_dst_port &&
             existing->ip_proto_count == rule->ip_proto_count &&
             existing->ip_protos[0] == rule->ip_protos[0] &&
@@ -357,10 +360,11 @@ static inline int intent_enforcement_emit_path(const struct intent_enforcement_p
 
     if (eth_type == INTENT_ETH_P_IP &&
         has_ip_dst &&
-        has_ip_proto &&
-        has_l4_dst_port)
+        has_ip_proto)
     {
         rule.kind = INTENT_ENFORCEMENT_RULE_IPV4_L4;
+        rule.l4_dst_port_mode = has_l4_dst_port ? INTENT_L4_DST_PORT_EXACT
+                                                : INTENT_L4_DST_PORT_ANY;
         return intent_enforcement_append_rule(plan, &rule, err_msg);
     }
 

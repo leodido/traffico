@@ -103,6 +103,29 @@ static int test_decision_dag_chains_three_permit_false_edges(void)
     return 0;
 }
 
+static int test_decision_dag_accepts_host_wide_l4_permit_path(void)
+{
+    struct intent intent = {0};
+    struct decision_dag dag = {0};
+    const char *err = NULL;
+
+    intent_init(&intent, INTENT_DIRECTION_EGRESS);
+    CHECK(intent_add_permit(&intent, "tcp/10.0.0.10", &err) == 0);
+    intent_normalize(&intent);
+
+    CHECK(intent_build_dag(&intent, &dag, &err) == 0);
+    CHECK(dag.node_count == 3);
+    CHECK(dag.nodes[0].predicate.field == INTENT_FIELD_ETH_TYPE);
+    CHECK(dag.nodes[1].predicate.field == INTENT_FIELD_IP_DST);
+    CHECK(dag.nodes[2].predicate.field == INTENT_FIELD_IP_PROTO);
+    CHECK(dag.nodes[2].on_true.terminal == DECISION_TERMINAL_ALLOW);
+
+    CHECK(intent_validate_dag(&dag, &err) == 0);
+    CHECK(intent_validate_supported_subset(&dag, &err) == 0);
+
+    return 0;
+}
+
 static int test_decision_dag_rejects_future_forbids(void)
 {
     struct intent intent = {0};
@@ -452,6 +475,7 @@ int main(void)
 {
     RUN_TEST(test_decision_dag_builds_predicate_chain);
     RUN_TEST(test_decision_dag_chains_three_permit_false_edges);
+    RUN_TEST(test_decision_dag_accepts_host_wide_l4_permit_path);
     RUN_TEST(test_decision_dag_rejects_future_forbids);
     RUN_TEST(test_decision_dag_rejects_non_drop_default_action);
     RUN_TEST(test_decision_dag_rejects_invalid_public_counts);

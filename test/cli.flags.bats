@@ -72,16 +72,33 @@ bats_require_minimum_version 1.7.0
     [[ "$output" == *"permitted traffic:"* ]]
 }
 
+@test "--dry-run --explain prints host-wide TCP and UDP permits" {
+    run traffico -i lo --at egress \
+        --allow udp/10.0.0.20 \
+        --allow tcp/10.0.0.10 \
+        --dry-run --explain
+    [ $status -eq 0 ]
+    [[ "$output" == *"  1. TCP to 10.0.0.10 any destination port"* ]]
+    [[ "$output" == *"  2. UDP to 10.0.0.20 any destination port"* ]]
+    [[ "$output" == *"TCP/UDP fragments that cannot be fully classified"* ]]
+    [[ "$output" != *"permit cannot be explained"* ]]
+}
+
 @test "Intent mode rejects ingress until designed" {
     run traffico -i lo --at ingress --allow arp --dry-run
     [ $status -eq 1 ]
     [ "${lines[0]}" == "traffico: intent dry-run: Intent BPF backend supports egress only" ]
 }
 
-@test "--allow rejects malformed values" {
-    run traffico -i lo --allow tcp/10.0.0.10 --dry-run
+@test "--allow accepts host-wide TCP and still rejects malformed values" {
+    run traffico -i lo --at egress --allow tcp/10.0.0.10 --dry-run
+    [ $status -eq 0 ]
+    [[ "$output" == *"intent dry-run: compiler ok"* ]]
+    [[ "$output" == *"intent backend: bpf admissible"* ]]
+
+    run traffico -i lo --allow tcp/10.0.0.10/443 --dry-run
     [ $status -eq 1 ]
-    [ "${lines[0]}" == "traffico: invalid permit: 'tcp/10.0.0.10'" ]
+    [ "${lines[0]}" == "traffico: invalid permit: 'tcp/10.0.0.10/443'" ]
 }
 
 @test "--allow rejects unsupported Intent value" {

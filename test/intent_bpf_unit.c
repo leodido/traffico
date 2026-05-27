@@ -71,6 +71,31 @@ static int test_bpf_lowering_preserves_correlated_rows(void)
     return 0;
 }
 
+static int test_bpf_lowering_accepts_any_destination_port(void)
+{
+    struct intent_enforcement_plan plan = {0};
+    struct intent_bpf_plan bpf_plan = {0};
+    const char *err = NULL;
+
+    plan.direction = INTENT_DIRECTION_EGRESS;
+    plan.rule_count = 1;
+    plan.rules[0].kind = INTENT_ENFORCEMENT_RULE_IPV4_L4;
+    plan.rules[0].ip_dst = 0x0a00000a;
+    plan.rules[0].l4_dst_port_mode = INTENT_L4_DST_PORT_ANY;
+    plan.rules[0].ip_proto_count = 1;
+    plan.rules[0].ip_protos[0] = INTENT_IPPROTO_TCP;
+
+    CHECK(intent_bpf_plan_from_enforcement(&plan, &bpf_plan, &err) == 0);
+    CHECK(bpf_plan.rule_count == 1);
+    CHECK(bpf_plan.rules[0].kind == INTENT_BPF_RULE_IPV4_L4);
+    CHECK(bpf_plan.rules[0].ip_dst == 0x0a00000a);
+    CHECK(bpf_plan.rules[0].l4_dst_port_mode == INTENT_L4_DST_PORT_ANY);
+    CHECK(bpf_plan.rules[0].l4_dst_port == 0);
+    CHECK(bpf_plan.rules[0].ip_proto_count == 1);
+    CHECK(bpf_plan.rules[0].ip_protos[0] == INTENT_IPPROTO_TCP);
+    return 0;
+}
+
 static int expect_unsupported_rule_rejected(const struct intent_enforcement_rule *rule)
 {
     struct intent_enforcement_plan plan = {0};
@@ -207,6 +232,7 @@ static int test_bpf_hook_cleanup_policy(void)
 int main(void)
 {
     RUN_TEST(test_bpf_lowering_preserves_correlated_rows);
+    RUN_TEST(test_bpf_lowering_accepts_any_destination_port);
     RUN_TEST(test_bpf_lowering_rejects_malformed_arp_row);
     RUN_TEST(test_bpf_lowering_rejects_unsupported_proto_value);
     RUN_TEST(test_bpf_lowering_rejects_duplicate_two_entry_proto_set);

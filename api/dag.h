@@ -374,8 +374,7 @@ static inline bool intent_subset_context_allows_terminal(struct intent_subset_co
 {
     bool has_l4_service = context.has_ipv4 &&
                           context.has_ip_dst &&
-                          context.has_l4_proto &&
-                          context.has_l4_dst_port;
+                          context.has_l4_proto;
 
     return context.has_arp || has_l4_service;
 }

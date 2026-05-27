@@ -45,6 +45,7 @@ static int attach_intent_bpf(struct config *conf,
         obj->rodata->intent_rules[i].ip_proto_count = plan->rules[i].ip_proto_count;
         obj->rodata->intent_rules[i].ip_protos[0] = plan->rules[i].ip_protos[0];
         obj->rodata->intent_rules[i].ip_protos[1] = plan->rules[i].ip_protos[1];
+        obj->rodata->intent_rules[i].l4_dst_port_mode = plan->rules[i].l4_dst_port_mode;
         obj->rodata->intent_rules[i].l4_dst_port = plan->rules[i].l4_dst_port;
         obj->rodata->intent_rules[i].ip_dst = plan->rules[i].ip_dst;
     }

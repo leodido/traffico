@@ -131,10 +131,19 @@ assert_intent_tc_cleanup() {
 }
 
 @test "Intent live invalid permit rejection leaves TC untouched" {
-    run ip netns exec "${NETNS}" traffico -i "${PEER}" --allow tcp/10.0.0.10
+    run ip netns exec "${NETNS}" traffico -i "${PEER}" --allow tcp/10.0.0.10/443
     [ $status -eq 1 ]
-    [ "${lines[0]}" == "traffico: invalid permit: 'tcp/10.0.0.10'" ]
+    [ "${lines[0]}" == "traffico: invalid permit: 'tcp/10.0.0.10/443'" ]
 
+    assert_intent_tc_cleanup
+}
+
+@test "Intent live host-wide TCP permit creates and cleans TC state" {
+    start_intent_attach "${BATS_TEST_TMPDIR}/intent-host-wide-live.out" \
+        -i "${PEER}" --at egress --allow arp --allow "tcp/${VETH_ADDR}"
+
+    wait_for_intent_tc_state
+    stop_intent_attach
     assert_intent_tc_cleanup
 }
 
@@ -154,7 +163,7 @@ assert_intent_tc_cleanup() {
     [[ "$output" == *"  2. TCP to 10.0.0.10 destination port 443"* ]]
     [[ "$output" == *"  3. UDP to 10.0.0.20 destination port 123"* ]]
     [[ "$output" == *"  4. DNS to 10.0.0.53 over TCP or UDP destination port 53"* ]]
-    [[ "$output" == *"TCP/UDP fragments whose destination port cannot be checked"* ]]
+    [[ "$output" == *"TCP/UDP fragments that cannot be fully classified"* ]]
 }
 
 @test "--explain prints deterministic intent before live attach" {

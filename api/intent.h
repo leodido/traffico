@@ -378,12 +378,16 @@ static inline int intent_add_l4_permit(struct intent *intent,
     struct intent_permit permit;
     intent_permit_init(&permit);
 
-    if (intent_parse_ipv4(ip, &dst_ip) != 0 ||
-        intent_parse_port(port, &dst_port) != 0)
+    if (intent_parse_ipv4(ip, &dst_ip) != 0)
+        return intent_fail(err_msg, "invalid permit");
+    if (port && intent_parse_port(port, &dst_port) != 0)
         return intent_fail(err_msg, "invalid permit");
     if (intent_add_eq(&permit, INTENT_FIELD_ETH_TYPE, INTENT_ETH_P_IP, err_msg) != 0 ||
         intent_add_eq(&permit, INTENT_FIELD_IP_DST, dst_ip, err_msg) != 0 ||
-        intent_add_eq(&permit, INTENT_FIELD_IP_PROTO, proto, err_msg) != 0 ||
+        intent_add_eq(&permit, INTENT_FIELD_IP_PROTO, proto, err_msg) != 0)
+        return -1;
+
+    if (port &&
         intent_add_eq(&permit, INTENT_FIELD_L4_DST_PORT, dst_port, err_msg) != 0)
         return -1;
 
@@ -432,17 +436,15 @@ static inline int intent_add_permit(struct intent *intent,
     if (strcmp(kind, "tcp") == 0)
     {
         port = strrchr(target, ':');
-        if (!port)
-            return intent_fail(err_msg, "invalid permit");
-        *port++ = '\0';
+        if (port)
+            *port++ = '\0';
         return intent_add_l4_permit(intent, INTENT_IPPROTO_TCP, target, port, err_msg);
     }
     if (strcmp(kind, "udp") == 0)
     {
         port = strrchr(target, ':');
-        if (!port)
-            return intent_fail(err_msg, "invalid permit");
-        *port++ = '\0';
+        if (port)
+            *port++ = '\0';
         return intent_add_l4_permit(intent, INTENT_IPPROTO_UDP, target, port, err_msg);
     }
 
@@ -552,6 +554,7 @@ static inline void intent_print_explain(FILE *out,
         uint32_t ip_dst = 0;
         uint32_t proto = 0;
         uint32_t port = 0;
+        bool has_port = intent_permit_get_eq(permit, INTENT_FIELD_L4_DST_PORT, &port);
 
         if (intent_permit_get_eq(permit, INTENT_FIELD_ETH_TYPE, &eth_type) &&
             eth_type == INTENT_ETH_P_ARP)
@@ -563,7 +566,7 @@ static inline void intent_print_explain(FILE *out,
         if (intent_permit_get_eq(permit, INTENT_FIELD_ETH_TYPE, &eth_type) &&
             eth_type == INTENT_ETH_P_IP &&
             intent_permit_get_eq(permit, INTENT_FIELD_IP_DST, &ip_dst) &&
-            intent_permit_get_eq(permit, INTENT_FIELD_L4_DST_PORT, &port) &&
+            has_port &&
             intent_permit_has_proto_in_tcp_udp(permit) &&
             port == INTENT_DNS_PORT)
         {
@@ -579,15 +582,23 @@ static inline void intent_print_explain(FILE *out,
             eth_type == INTENT_ETH_P_IP &&
             intent_permit_get_eq(permit, INTENT_FIELD_IP_DST, &ip_dst) &&
             intent_permit_get_eq(permit, INTENT_FIELD_IP_PROTO, &proto) &&
-            intent_permit_get_eq(permit, INTENT_FIELD_L4_DST_PORT, &port) &&
             proto == INTENT_IPPROTO_TCP)
         {
             has_l4_permits = true;
             intent_format_ip(ip_dst, ip, sizeof(ip));
-            fprintf(out, "  %zu. TCP to %s destination port %u\n",
-                    i + 1,
-                    ip,
-                    port);
+            if (has_port)
+            {
+                fprintf(out, "  %zu. TCP to %s destination port %u\n",
+                        i + 1,
+                        ip,
+                        port);
+            }
+            else
+            {
+                fprintf(out, "  %zu. TCP to %s any destination port\n",
+                        i + 1,
+                        ip);
+            }
             continue;
         }
 
@@ -595,15 +606,23 @@ static inline void intent_print_explain(FILE *out,
             eth_type == INTENT_ETH_P_IP &&
             intent_permit_get_eq(permit, INTENT_FIELD_IP_DST, &ip_dst) &&
             intent_permit_get_eq(permit, INTENT_FIELD_IP_PROTO, &proto) &&
-            intent_permit_get_eq(permit, INTENT_FIELD_L4_DST_PORT, &port) &&
             proto == INTENT_IPPROTO_UDP)
         {
             has_l4_permits = true;
             intent_format_ip(ip_dst, ip, sizeof(ip));
-            fprintf(out, "  %zu. UDP to %s destination port %u\n",
-                    i + 1,
-                    ip,
-                    port);
+            if (has_port)
+            {
+                fprintf(out, "  %zu. UDP to %s destination port %u\n",
+                        i + 1,
+                        ip,
+                        port);
+            }
+            else
+            {
+                fprintf(out, "  %zu. UDP to %s any destination port\n",
+                        i + 1,
+                        ip);
+            }
             continue;
         }
 
@@ -612,9 +631,9 @@ static inline void intent_print_explain(FILE *out,
 
     fprintf(out, "\ndropped traffic:\n");
     fprintf(out, "  - malformed packets that cannot be safely classified\n");
-    /* Only mention fragment policy when a permit depends on L4 ports. */
+    /* Only mention fragment policy when a permit needs L4 classification. */
     if (has_l4_permits)
-        fprintf(out, "  - TCP/UDP fragments whose destination port cannot be checked\n");
+        fprintf(out, "  - TCP/UDP fragments that cannot be fully classified\n");
     fprintf(out, "  - any traffic not matching a permit\n");
 }
 

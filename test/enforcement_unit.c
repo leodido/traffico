@@ -91,6 +91,27 @@ static int test_enforcement_extracts_tcp_ipv4_l4_rule(void)
     return 0;
 }
 
+static int test_enforcement_extracts_host_wide_tcp_any_port_rule(void)
+{
+    struct intent intent = {0};
+    struct intent_enforcement_plan plan = {0};
+    const char *err = NULL;
+
+    intent_init(&intent, INTENT_DIRECTION_EGRESS);
+    CHECK(intent_add_permit(&intent, "tcp/10.0.0.10", &err) == 0);
+
+    CHECK(build_plan(&intent, &plan, &err) == 0);
+    CHECK(plan.direction == INTENT_DIRECTION_EGRESS);
+    CHECK(plan.rule_count == 1);
+    CHECK(plan.rules[0].kind == INTENT_ENFORCEMENT_RULE_IPV4_L4);
+    CHECK(plan.rules[0].ip_dst == 0x0a00000a);
+    CHECK(plan.rules[0].l4_dst_port_mode == INTENT_L4_DST_PORT_ANY);
+    CHECK(plan.rules[0].l4_dst_port == 0);
+    CHECK(plan.rules[0].ip_proto_count == 1);
+    CHECK(plan.rules[0].ip_protos[0] == INTENT_IPPROTO_TCP);
+    return 0;
+}
+
 static int test_enforcement_extracts_dns_ipv4_l4_rule(void)
 {
     struct intent intent = {0};
@@ -423,6 +444,7 @@ int main(void)
 {
     RUN_TEST(test_enforcement_extracts_arp_rule);
     RUN_TEST(test_enforcement_extracts_tcp_ipv4_l4_rule);
+    RUN_TEST(test_enforcement_extracts_host_wide_tcp_any_port_rule);
     RUN_TEST(test_enforcement_extracts_dns_ipv4_l4_rule);
     RUN_TEST(test_enforcement_extracts_primary_scenario_rows);
     RUN_TEST(test_enforcement_preserves_prior_true_predicates_on_false_edges);

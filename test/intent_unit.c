@@ -151,14 +151,74 @@ static int test_parse_ipv4_addresses(void)
     return 0;
 }
 
+static int test_parse_host_wide_l4_permits(void)
+{
+    struct intent intent = {0};
+    const char *err = NULL;
+
+    intent_init(&intent, INTENT_DIRECTION_EGRESS);
+
+    CHECK(intent_add_permit(&intent, "tcp/10.0.0.10", &err) == 0);
+    CHECK(intent_add_permit(&intent, "udp/10.0.0.20", &err) == 0);
+
+    CHECK(intent.permit_count == 2);
+    CHECK(intent.permits[0].predicate_count == 3);
+    CHECK_PREDICATE(&intent.permits[0].predicates[0],
+                    INTENT_FIELD_ETH_TYPE,
+                    INTENT_OP_EQ,
+                    1,
+                    INTENT_ETH_P_IP,
+                    0);
+    CHECK_PREDICATE(&intent.permits[0].predicates[1],
+                    INTENT_FIELD_IP_DST,
+                    INTENT_OP_EQ,
+                    1,
+                    0x0a00000a,
+                    0);
+    CHECK_PREDICATE(&intent.permits[0].predicates[2],
+                    INTENT_FIELD_IP_PROTO,
+                    INTENT_OP_EQ,
+                    1,
+                    INTENT_IPPROTO_TCP,
+                    0);
+
+    CHECK(intent.permits[1].predicate_count == 3);
+    CHECK_PREDICATE(&intent.permits[1].predicates[1],
+                    INTENT_FIELD_IP_DST,
+                    INTENT_OP_EQ,
+                    1,
+                    0x0a000014,
+                    0);
+    CHECK_PREDICATE(&intent.permits[1].predicates[2],
+                    INTENT_FIELD_IP_PROTO,
+                    INTENT_OP_EQ,
+                    1,
+                    INTENT_IPPROTO_UDP,
+                    0);
+
+    return 0;
+}
+
+static int test_rejects_duplicate_host_wide_l4_permits(void)
+{
+    struct intent intent = {0};
+    const char *err = NULL;
+
+    intent_init(&intent, INTENT_DIRECTION_EGRESS);
+
+    CHECK(intent_add_permit(&intent, "tcp/10.0.0.10", &err) == 0);
+    CHECK(intent_add_permit(&intent, "tcp/10.0.0.10", &err) == -1);
+    CHECK(strcmp(err, "duplicate permit") == 0);
+
+    return 0;
+}
+
 static int test_rejects_invalid_and_duplicate_permits(void)
 {
     struct intent intent = {0};
     const char *err = NULL;
 
     intent_init(&intent, INTENT_DIRECTION_EGRESS);
-    CHECK(intent_add_permit(&intent, "tcp/10.0.0.10", &err) == -1);
-    CHECK(strcmp(err, "invalid permit") == 0);
     CHECK(intent_add_permit(&intent, "tcp/10.0.0.10/443", &err) == -1);
     CHECK(strcmp(err, "invalid permit") == 0);
     CHECK(intent_add_permit(&intent, "udp/10.0.0.20:0", &err) == -1);
@@ -173,7 +233,7 @@ static int test_rejects_invalid_and_duplicate_permits(void)
     CHECK(strcmp(err, "dns permits do not accept a port") == 0);
     CHECK(intent_add_permit(&intent, "icmp/10.0.0.10", &err) == -1);
     CHECK(strcmp(err, "unsupported permit") == 0);
-    CHECK(intent_add_permit(&intent, "tcp/10.0.0.10", NULL) == -1);
+    CHECK(intent_add_permit(&intent, "tcp/10.0.0.10/443", NULL) == -1);
     CHECK(intent_add_permit(&intent, NULL, &err) == -1);
     CHECK(strcmp(err, "invalid permit") == 0);
     CHECK(intent_add_permit(&intent, "arp", &err) == 0);
@@ -378,6 +438,8 @@ int main(void)
 {
     RUN_TEST(test_parse_first_permits);
     RUN_TEST(test_parse_ipv4_addresses);
+    RUN_TEST(test_parse_host_wide_l4_permits);
+    RUN_TEST(test_rejects_duplicate_host_wide_l4_permits);
     RUN_TEST(test_rejects_invalid_and_duplicate_permits);
     RUN_TEST(test_rejects_duplicate_lowered_permits);
     RUN_TEST(test_rejects_empty_permits);
