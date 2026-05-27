@@ -442,6 +442,8 @@ static inline int intent_enforcement_walk_edge(const struct decision_dag *dag,
         return intent_enforcement_emit_path(&path, plan, err_msg);
     case DECISION_TERMINAL_DROP:
         return 0;
+    case DECISION_TERMINAL_FORBID:
+        return intent_fail(err_msg, "forbids are not supported yet");
     default:
         return intent_fail(err_msg, "enforcement path is outside the first supported subset");
     }

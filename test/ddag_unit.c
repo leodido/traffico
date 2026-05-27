@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include "api/dag.h"
+#include "intent_semantics.h"
 
 #define CHECK(condition)                                                       \
     do                                                                         \
@@ -30,6 +31,46 @@ static void set_eq_predicate(struct intent_predicate *predicate,
     predicate->op = INTENT_OP_EQ;
     predicate->values.count = 1;
     predicate->values.values[0] = value;
+}
+
+static enum intent_action test_decision_for_terminal(enum decision_terminal terminal)
+{
+    if (terminal == DECISION_TERMINAL_ALLOW)
+        return INTENT_ACTION_ALLOW;
+    return INTENT_ACTION_DROP;
+}
+
+static enum intent_action test_decision_dag_eval_edge(const struct decision_dag *dag,
+                                                      const struct decision_edge *edge,
+                                                      const struct intent_test_packet *packet);
+
+static enum intent_action test_decision_dag_eval_node(const struct decision_dag *dag,
+                                                      size_t node_index,
+                                                      const struct intent_test_packet *packet)
+{
+    const struct decision_node *node = &dag->nodes[node_index];
+
+    if (!intent_test_predicate_matches(&node->predicate, packet))
+        return test_decision_dag_eval_edge(dag, &node->on_false, packet);
+    return test_decision_dag_eval_edge(dag, &node->on_true, packet);
+}
+
+static enum intent_action test_decision_dag_eval_edge(const struct decision_dag *dag,
+                                                      const struct decision_edge *edge,
+                                                      const struct intent_test_packet *packet)
+{
+    if (edge->terminal != DECISION_TERMINAL_NONE)
+        return test_decision_for_terminal(edge->terminal);
+    return test_decision_dag_eval_node(dag, edge->node, packet);
+}
+
+static enum intent_action test_decision_dag_decide(const struct decision_dag *dag,
+                                                   struct intent_test_packet packet)
+{
+    if (packet.kind == INTENT_TEST_PACKET_MALFORMED ||
+        packet.kind == INTENT_TEST_PACKET_UNCLASSIFIABLE)
+        return INTENT_ACTION_DROP;
+    return test_decision_dag_eval_node(dag, dag->root, &packet);
 }
 
 static int test_decision_dag_builds_predicate_chain(void)
@@ -126,18 +167,100 @@ static int test_decision_dag_accepts_host_wide_l4_permit_path(void)
     return 0;
 }
 
-static int test_decision_dag_rejects_future_forbids(void)
+static int test_decision_dag_builds_forbids_before_permits(void)
 {
     struct intent intent = {0};
     struct decision_dag dag = {0};
     const char *err = NULL;
 
     intent_init(&intent, INTENT_DIRECTION_EGRESS);
-    CHECK(intent_add_permit(&intent, "arp", &err) == 0);
-    intent.forbid_count = 1;
+    CHECK(intent_add_permit(&intent, "tcp/10.0.0.10", &err) == 0);
+    CHECK(intent_add_forbid(&intent, "tcp/10.0.0.10:22", &err) == 0);
+    intent_normalize(&intent);
 
-    CHECK(intent_build_dag(&intent, &dag, &err) == -1);
-    CHECK(strcmp(err, "forbids are not supported yet") == 0);
+    CHECK(intent_build_dag(&intent, &dag, &err) == 0);
+    CHECK(dag.node_count == 7);
+
+    CHECK(dag.nodes[0].predicate.field == INTENT_FIELD_ETH_TYPE);
+    CHECK(dag.nodes[0].on_true.terminal == DECISION_TERMINAL_NONE);
+    CHECK(dag.nodes[0].on_false.terminal == DECISION_TERMINAL_NONE);
+    CHECK(dag.nodes[0].on_false.node == 4);
+
+    CHECK(dag.nodes[3].predicate.field == INTENT_FIELD_L4_DST_PORT);
+    CHECK(dag.nodes[3].on_true.terminal == DECISION_TERMINAL_FORBID);
+    CHECK(dag.nodes[3].on_false.terminal == DECISION_TERMINAL_NONE);
+    CHECK(dag.nodes[3].on_false.node == 4);
+
+    CHECK(dag.nodes[6].predicate.field == INTENT_FIELD_IP_PROTO);
+    CHECK(dag.nodes[6].on_true.terminal == DECISION_TERMINAL_ALLOW);
+    CHECK(dag.nodes[6].on_false.terminal == DECISION_TERMINAL_DROP);
+
+    CHECK(intent_validate_dag(&dag, &err) == 0);
+    CHECK(intent_validate_supported_subset(&dag, &err) == 0);
+
+    return 0;
+}
+
+static int test_decision_dag_matches_intent_oracle_for_golden_policy(void)
+{
+    struct intent intent = {0};
+    struct decision_dag dag = {0};
+    const char *err = NULL;
+    struct intent_test_packet packets[] = {
+        intent_test_packet_arp(),
+        intent_test_packet_tcp(0x0a00000a, 22),
+        intent_test_packet_tcp(0x0a00000a, 443),
+        intent_test_packet_udp(0x0a00000a, 443),
+        intent_test_packet_tcp(0x0a000014, 443),
+        intent_test_packet_malformed(),
+        intent_test_packet_unclassifiable(),
+    };
+
+    intent_init(&intent, INTENT_DIRECTION_EGRESS);
+    CHECK(intent_add_permit(&intent, "arp", &err) == 0);
+    CHECK(intent_add_permit(&intent, "tcp/10.0.0.10", &err) == 0);
+    CHECK(intent_add_forbid(&intent, "tcp/10.0.0.10:22", &err) == 0);
+    intent_normalize(&intent);
+
+    CHECK(intent_build_dag(&intent, &dag, &err) == 0);
+    CHECK(intent_validate_dag(&dag, &err) == 0);
+
+    for (size_t i = 0; i < sizeof(packets) / sizeof(packets[0]); i++)
+    {
+        CHECK(test_decision_dag_decide(&dag, packets[i]) ==
+              intent_test_oracle_decide(&intent, packets[i]));
+    }
+
+    return 0;
+}
+
+static int test_decision_dag_matches_intent_oracle_for_dns_carveout_policy(void)
+{
+    struct intent intent = {0};
+    struct decision_dag dag = {0};
+    const char *err = NULL;
+    struct intent_test_packet packets[] = {
+        intent_test_packet_udp(0x0a000035, 53),
+        intent_test_packet_tcp(0x0a000035, 53),
+        intent_test_packet_tcp(0x0a000035, 443),
+        intent_test_packet_udp(0x0a000035, 123),
+    };
+
+    intent_init(&intent, INTENT_DIRECTION_EGRESS);
+    CHECK(intent_add_permit(&intent, "arp", &err) == 0);
+    CHECK(intent_add_permit(&intent, "tcp/10.0.0.53", &err) == 0);
+    CHECK(intent_add_permit(&intent, "udp/10.0.0.53", &err) == 0);
+    CHECK(intent_add_forbid(&intent, "dns/10.0.0.53", &err) == 0);
+    intent_normalize(&intent);
+
+    CHECK(intent_build_dag(&intent, &dag, &err) == 0);
+    CHECK(intent_validate_dag(&dag, &err) == 0);
+
+    for (size_t i = 0; i < sizeof(packets) / sizeof(packets[0]); i++)
+    {
+        CHECK(test_decision_dag_decide(&dag, packets[i]) ==
+              intent_test_oracle_decide(&intent, packets[i]));
+    }
 
     return 0;
 }
@@ -476,7 +599,9 @@ int main(void)
     RUN_TEST(test_decision_dag_builds_predicate_chain);
     RUN_TEST(test_decision_dag_chains_three_permit_false_edges);
     RUN_TEST(test_decision_dag_accepts_host_wide_l4_permit_path);
-    RUN_TEST(test_decision_dag_rejects_future_forbids);
+    RUN_TEST(test_decision_dag_builds_forbids_before_permits);
+    RUN_TEST(test_decision_dag_matches_intent_oracle_for_golden_policy);
+    RUN_TEST(test_decision_dag_matches_intent_oracle_for_dns_carveout_policy);
     RUN_TEST(test_decision_dag_rejects_non_drop_default_action);
     RUN_TEST(test_decision_dag_rejects_invalid_public_counts);
     RUN_TEST(test_decision_dag_validates_max_permit_set);

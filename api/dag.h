@@ -8,7 +8,7 @@
 #include "intent.h"
 
 /* Validators recurse through a fixed-size userspace graph bounded here. */
-#define MAX_DECISION_NODES (MAX_INTENT_PERMITS * MAX_INTENT_PREDICATES)
+#define MAX_DECISION_NODES ((MAX_INTENT_PERMITS + MAX_INTENT_FORBIDS) * MAX_INTENT_PREDICATES)
 #define INTENT_SUBSET_CONTEXT_COUNT 32
 
 enum decision_terminal
@@ -16,6 +16,7 @@ enum decision_terminal
     DECISION_TERMINAL_NONE = 0,
     DECISION_TERMINAL_ALLOW = 1,
     DECISION_TERMINAL_DROP = 2,
+    DECISION_TERMINAL_FORBID = 3,
 };
 
 struct decision_edge
@@ -38,7 +39,7 @@ struct decision_dag
     enum intent_direction direction;
     size_t root;
     /*
-     * At current limits this array is about 15 KiB. Keep decision_dag on the
+     * At current limits this array is about 30 KiB. Keep decision_dag on the
      * userspace stack or in static storage, never on a BPF/kernel stack.
      */
     struct decision_node nodes[MAX_DECISION_NODES];
@@ -60,10 +61,33 @@ static inline struct decision_edge decision_edge_node(size_t node)
     return edge;
 }
 
+static inline void intent_emit_decision_chain(struct decision_dag *dag,
+                                              const struct intent_predicate *predicates,
+                                              size_t predicate_count,
+                                              size_t chain_start,
+                                              enum decision_terminal true_terminal,
+                                              struct decision_edge false_edge)
+{
+    for (size_t i = 0; i < predicate_count; i++)
+    {
+        size_t node_index = chain_start + i;
+        struct decision_node *node = &dag->nodes[node_index];
+
+        node->predicate = predicates[i];
+        node->on_false = false_edge;
+        node->on_error = decision_edge_terminal(DECISION_TERMINAL_DROP);
+        if (i + 1 < predicate_count)
+            node->on_true = decision_edge_node(node_index + 1);
+        else
+            node->on_true = decision_edge_terminal(true_terminal);
+    }
+}
+
 static inline int intent_build_dag(const struct intent *intent,
                                    struct decision_dag *dag,
                                    const char **err_msg)
 {
+    size_t forbid_starts[MAX_INTENT_FORBIDS] = {0};
     size_t permit_starts[MAX_INTENT_PERMITS] = {0};
     size_t node_count = 0;
 
@@ -71,10 +95,23 @@ static inline int intent_build_dag(const struct intent *intent,
         return intent_fail(err_msg, "at least one permit is required");
     if (intent->permit_count > MAX_INTENT_PERMITS)
         return intent_fail(err_msg, "too many permits");
+    if (intent->forbid_count > MAX_INTENT_FORBIDS)
+        return intent_fail(err_msg, "too many forbids");
     if (intent->default_action != INTENT_ACTION_DROP)
         return intent_fail(err_msg, "default action must drop");
-    if (intent->forbid_count != 0)
-        return intent_fail(err_msg, "forbids are not supported yet");
+
+    for (size_t i = 0; i < intent->forbid_count; i++)
+    {
+        const struct intent_forbid *forbid = &intent->forbids[i];
+        if (forbid->predicate_count == 0)
+            return intent_fail(err_msg, "forbid has no predicates");
+        if (forbid->predicate_count > MAX_INTENT_PREDICATES)
+            return intent_fail(err_msg, "invalid forbid");
+        if (forbid->predicate_count > MAX_DECISION_NODES - node_count)
+            return intent_fail(err_msg, "Decision DAG exceeds node limit");
+        forbid_starts[i] = node_count;
+        node_count += forbid->predicate_count;
+    }
 
     for (size_t i = 0; i < intent->permit_count; i++)
     {
@@ -95,33 +132,41 @@ static inline int intent_build_dag(const struct intent *intent,
     dag->node_count = node_count;
 
     /*
-     * Each permit lowers to one linear predicate chain.
-     * Every false predicate edge in non-last permits enters the next chain.
-     * Every false predicate edge in the last permit targets terminal DROP.
+     * Each rule lowers to one linear predicate chain.
+     * Forbids are emitted before permits so explicit deny wins.
+     * False edges enter the next chain or terminal DROP.
      * Shared prefixes are intentionally not merged yet.
      */
+    for (size_t i = 0; i < intent->forbid_count; i++)
+    {
+        const struct intent_forbid *forbid = &intent->forbids[i];
+        struct decision_edge false_edge = decision_edge_node(permit_starts[0]);
+
+        if (i + 1 < intent->forbid_count)
+            false_edge = decision_edge_node(forbid_starts[i + 1]);
+
+        intent_emit_decision_chain(dag,
+                                   forbid->predicates,
+                                   forbid->predicate_count,
+                                   forbid_starts[i],
+                                   DECISION_TERMINAL_FORBID,
+                                   false_edge);
+    }
+
     for (size_t i = 0; i < intent->permit_count; i++)
     {
         const struct intent_permit *permit = &intent->permits[i];
-        size_t permit_start = permit_starts[i];
         struct decision_edge false_edge = decision_edge_terminal(DECISION_TERMINAL_DROP);
 
         if (i + 1 < intent->permit_count)
             false_edge = decision_edge_node(permit_starts[i + 1]);
 
-        for (size_t j = 0; j < permit->predicate_count; j++)
-        {
-            size_t node_index = permit_start + j;
-            struct decision_node *node = &dag->nodes[node_index];
-
-            node->predicate = permit->predicates[j];
-            node->on_false = false_edge;
-            node->on_error = decision_edge_terminal(DECISION_TERMINAL_DROP);
-            if (j + 1 < permit->predicate_count)
-                node->on_true = decision_edge_node(node_index + 1);
-            else
-                node->on_true = decision_edge_terminal(DECISION_TERMINAL_ALLOW);
-        }
+        intent_emit_decision_chain(dag,
+                                   permit->predicates,
+                                   permit->predicate_count,
+                                   permit_starts[i],
+                                   DECISION_TERMINAL_ALLOW,
+                                   false_edge);
     }
 
     return 0;
@@ -145,6 +190,7 @@ static inline int intent_validate_edge(const struct decision_dag *dag,
         return 0;
     case DECISION_TERMINAL_ALLOW:
     case DECISION_TERMINAL_DROP:
+    case DECISION_TERMINAL_FORBID:
         if (edge->node != 0)
             return intent_fail(err_msg, "Decision DAG terminal edge target must be empty");
         return 0;
@@ -396,6 +442,9 @@ static inline int intent_validate_supported_edge(const struct decision_dag *dag,
         if (edge->terminal == DECISION_TERMINAL_ALLOW &&
             !intent_subset_context_allows_terminal(context))
             return intent_fail(err_msg, "Decision DAG allow path is outside the first supported subset");
+        if (edge->terminal == DECISION_TERMINAL_FORBID &&
+            !intent_subset_context_allows_terminal(context))
+            return intent_fail(err_msg, "Decision DAG forbid path is outside the first supported subset");
         return 0;
     }
 
