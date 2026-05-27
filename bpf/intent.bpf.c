@@ -6,9 +6,11 @@
 
 char LICENSE[] SEC("license") = "Dual BSD/GPL";
 
+/* Must match api/intent_bpf.h because the skeleton uses the userspace type. */
 struct intent_bpf_rule
 {
     __u8 kind;
+    __u8 action;
     __u8 ip_proto_count;
     __u8 ip_protos[INTENT_BPF_MAX_PROTOS];
     __u8 l4_dst_port_mode;
@@ -30,6 +32,21 @@ static __always_inline int proto_allowed(const volatile struct intent_bpf_rule *
             return 1;
     }
     return 0;
+}
+
+static __always_inline int rule_matches_l4(const volatile struct intent_bpf_rule *rule,
+                                           __u32 dst_ip,
+                                           __u8 proto,
+                                           __u16 dst_port)
+{
+    if (rule->kind != INTENT_BPF_RULE_IPV4_L4)
+        return 0;
+    if (rule->ip_dst != dst_ip || !proto_allowed(rule, proto))
+        return 0;
+    if (rule->l4_dst_port_mode == INTENT_L4_DST_PORT_ANY)
+        return 1;
+    return rule->l4_dst_port_mode == INTENT_L4_DST_PORT_EXACT &&
+           rule->l4_dst_port == dst_port;
 }
 
 SEC("tc")
@@ -64,7 +81,21 @@ int intent(struct __sk_buff *skb)
         {
             if (i >= intent_rule_count)
                 break;
-            if (intent_rules[i].kind == INTENT_BPF_RULE_ARP)
+
+            const volatile struct intent_bpf_rule *rule = &intent_rules[i];
+            if (rule->kind == INTENT_BPF_RULE_ARP &&
+                rule->action == INTENT_BPF_ACTION_DROP)
+                return TC_ACT_SHOT;
+        }
+
+        for (__u32 i = 0; i < INTENT_BPF_MAX_RULES; i++)
+        {
+            if (i >= intent_rule_count)
+                break;
+
+            const volatile struct intent_bpf_rule *rule = &intent_rules[i];
+            if (rule->kind == INTENT_BPF_RULE_ARP &&
+                rule->action == INTENT_BPF_ACTION_ALLOW)
                 return TC_ACT_OK;
         }
         return TC_ACT_SHOT;
@@ -110,21 +141,26 @@ int intent(struct __sk_buff *skb)
     __u16 dst_port = bpf_ntohs(*dst_port_ptr);
     __u32 dst_ip = bpf_ntohl(ip->daddr);
 
-    /* Rules are correlated tuples, not independent allow sets. */
+    /* Matching forbids take precedence over matching permits. */
     for (__u32 i = 0; i < INTENT_BPF_MAX_RULES; i++)
     {
         if (i >= intent_rule_count)
             break;
 
         const volatile struct intent_bpf_rule *rule = &intent_rules[i];
-        if (rule->kind != INTENT_BPF_RULE_IPV4_L4)
-            continue;
-        if (rule->ip_dst != dst_ip || !proto_allowed(rule, ip->protocol))
-            continue;
-        if (rule->l4_dst_port_mode == INTENT_L4_DST_PORT_ANY)
-            return TC_ACT_OK;
-        if (rule->l4_dst_port_mode == INTENT_L4_DST_PORT_EXACT &&
-            rule->l4_dst_port == dst_port)
+        if (rule->action == INTENT_BPF_ACTION_DROP &&
+            rule_matches_l4(rule, dst_ip, ip->protocol, dst_port))
+            return TC_ACT_SHOT;
+    }
+
+    for (__u32 i = 0; i < INTENT_BPF_MAX_RULES; i++)
+    {
+        if (i >= intent_rule_count)
+            break;
+
+        const volatile struct intent_bpf_rule *rule = &intent_rules[i];
+        if (rule->action == INTENT_BPF_ACTION_ALLOW &&
+            rule_matches_l4(rule, dst_ip, ip->protocol, dst_port))
             return TC_ACT_OK;
     }
 

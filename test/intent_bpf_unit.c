@@ -4,6 +4,7 @@
 #include "api/dag.h"
 #include "api/enforcement.h"
 #include "api/intent_bpf.h"
+#include "intent_semantics.h"
 
 #define CHECK(condition)                                                       \
     do                                                                         \
@@ -38,6 +39,55 @@ static int build_bpf_plan(struct intent_bpf_plan *bpf_plan, const char **err)
     CHECK(intent_build_dag(&intent, &dag, err) == 0);
     CHECK(intent_enforcement_plan_from_dag(&dag, &plan, err) == 0);
     return intent_bpf_plan_from_enforcement(&plan, bpf_plan, err);
+}
+
+static bool test_bpf_rule_matches_packet(const struct intent_bpf_rule *rule,
+                                         const struct intent_test_packet *packet)
+{
+    if (rule->kind == INTENT_BPF_RULE_ARP)
+        return packet->kind == INTENT_TEST_PACKET_ARP;
+
+    if (rule->kind != INTENT_BPF_RULE_IPV4_L4 ||
+        packet->kind != INTENT_TEST_PACKET_IPV4_L4 ||
+        rule->ip_dst != packet->ip_dst)
+        return false;
+
+    bool proto_matches = false;
+    for (size_t i = 0; i < rule->ip_proto_count; i++)
+        proto_matches = proto_matches || rule->ip_protos[i] == packet->ip_proto;
+    if (!proto_matches)
+        return false;
+
+    if (rule->l4_dst_port_mode == INTENT_L4_DST_PORT_ANY)
+        return true;
+    return rule->l4_dst_port_mode == INTENT_L4_DST_PORT_EXACT &&
+           rule->l4_dst_port == packet->l4_dst_port;
+}
+
+static enum intent_action test_bpf_decide(const struct intent_bpf_plan *plan,
+                                          struct intent_test_packet packet)
+{
+    if (packet.kind == INTENT_TEST_PACKET_MALFORMED ||
+        packet.kind == INTENT_TEST_PACKET_UNCLASSIFIABLE)
+        return INTENT_ACTION_DROP;
+
+    for (size_t i = 0; i < plan->rule_count; i++)
+    {
+        if (!test_bpf_rule_matches_packet(&plan->rules[i], &packet))
+            continue;
+        if (plan->rules[i].action == INTENT_BPF_ACTION_DROP)
+            return INTENT_ACTION_DROP;
+    }
+
+    for (size_t i = 0; i < plan->rule_count; i++)
+    {
+        if (!test_bpf_rule_matches_packet(&plan->rules[i], &packet))
+            continue;
+        if (plan->rules[i].action == INTENT_BPF_ACTION_ALLOW)
+            return INTENT_ACTION_ALLOW;
+    }
+
+    return INTENT_ACTION_DROP;
 }
 
 static int test_bpf_lowering_preserves_correlated_rows(void)
@@ -97,7 +147,7 @@ static int test_bpf_lowering_accepts_any_destination_port(void)
     return 0;
 }
 
-static int test_bpf_lowering_rejects_drop_rows_until_runtime_exists(void)
+static int test_bpf_lowering_preserves_drop_before_allow(void)
 {
     struct intent intent = {0};
     struct decision_dag dag = {0};
@@ -112,8 +162,91 @@ static int test_bpf_lowering_rejects_drop_rows_until_runtime_exists(void)
 
     CHECK(intent_build_dag(&intent, &dag, &err) == 0);
     CHECK(intent_enforcement_plan_from_dag(&dag, &plan, &err) == 0);
+    CHECK(intent_bpf_plan_from_enforcement(&plan, &bpf_plan, &err) == 0);
+
+    CHECK(bpf_plan.rule_count == 2);
+    CHECK(bpf_plan.rules[0].action == INTENT_BPF_ACTION_DROP);
+    CHECK(bpf_plan.rules[1].action == INTENT_BPF_ACTION_ALLOW);
+    return 0;
+}
+
+static int test_bpf_rows_match_intent_oracle_for_golden_policy(void)
+{
+    struct intent intent = {0};
+    struct decision_dag dag = {0};
+    struct intent_enforcement_plan plan = {0};
+    struct intent_bpf_plan bpf_plan = {0};
+    const char *err = NULL;
+    struct intent_test_packet packets[] = {
+        intent_test_packet_arp(),
+        intent_test_packet_tcp(0x0a00000a, 22),
+        intent_test_packet_tcp(0x0a00000a, 443),
+        intent_test_packet_udp(0x0a00000a, 443),
+        intent_test_packet_tcp(0x0a000014, 443),
+        intent_test_packet_malformed(),
+        intent_test_packet_unclassifiable(),
+    };
+
+    intent_init(&intent, INTENT_DIRECTION_EGRESS);
+    CHECK(intent_add_permit(&intent, "arp", &err) == 0);
+    CHECK(intent_add_permit(&intent, "tcp/10.0.0.10", &err) == 0);
+    CHECK(intent_add_forbid(&intent, "tcp/10.0.0.10:22", &err) == 0);
+    intent_normalize(&intent);
+
+    CHECK(intent_build_dag(&intent, &dag, &err) == 0);
+    CHECK(intent_enforcement_plan_from_dag(&dag, &plan, &err) == 0);
+    CHECK(intent_bpf_plan_from_enforcement(&plan, &bpf_plan, &err) == 0);
+    for (size_t i = 0; i < sizeof(packets) / sizeof(packets[0]); i++)
+    {
+        CHECK(test_bpf_decide(&bpf_plan, packets[i]) ==
+              intent_test_oracle_decide(&intent, packets[i]));
+    }
+    return 0;
+}
+
+static int test_bpf_rows_match_intent_oracle_for_dns_carveout_policy(void)
+{
+    struct intent intent = {0};
+    struct decision_dag dag = {0};
+    struct intent_enforcement_plan plan = {0};
+    struct intent_bpf_plan bpf_plan = {0};
+    const char *err = NULL;
+    struct intent_test_packet packets[] = {
+        intent_test_packet_udp(0x0a000035, 53),
+        intent_test_packet_tcp(0x0a000035, 53),
+        intent_test_packet_tcp(0x0a000035, 443),
+        intent_test_packet_udp(0x0a000035, 123),
+    };
+
+    intent_init(&intent, INTENT_DIRECTION_EGRESS);
+    CHECK(intent_add_permit(&intent, "arp", &err) == 0);
+    CHECK(intent_add_permit(&intent, "tcp/10.0.0.53", &err) == 0);
+    CHECK(intent_add_permit(&intent, "udp/10.0.0.53", &err) == 0);
+    CHECK(intent_add_forbid(&intent, "dns/10.0.0.53", &err) == 0);
+    intent_normalize(&intent);
+
+    CHECK(intent_build_dag(&intent, &dag, &err) == 0);
+    CHECK(intent_enforcement_plan_from_dag(&dag, &plan, &err) == 0);
+    CHECK(intent_bpf_plan_from_enforcement(&plan, &bpf_plan, &err) == 0);
+    for (size_t i = 0; i < sizeof(packets) / sizeof(packets[0]); i++)
+    {
+        CHECK(test_bpf_decide(&bpf_plan, packets[i]) ==
+              intent_test_oracle_decide(&intent, packets[i]));
+    }
+    return 0;
+}
+
+static int test_bpf_lowering_rejects_more_than_max_rules_before_reading_rows(void)
+{
+    struct intent_enforcement_plan plan = {0};
+    struct intent_bpf_plan bpf_plan = {0};
+    const char *err = NULL;
+
+    plan.direction = INTENT_DIRECTION_EGRESS;
+    plan.rule_count = INTENT_BPF_MAX_RULES + 1;
+
     CHECK(intent_bpf_plan_from_enforcement(&plan, &bpf_plan, &err) == -1);
-    CHECK(strcmp(err, "forbids are not supported yet") == 0);
+    CHECK(strcmp(err, "Intent BPF plan exceeds rule limit") == 0);
     return 0;
 }
 
@@ -255,7 +388,10 @@ int main(void)
 {
     RUN_TEST(test_bpf_lowering_preserves_correlated_rows);
     RUN_TEST(test_bpf_lowering_accepts_any_destination_port);
-    RUN_TEST(test_bpf_lowering_rejects_drop_rows_until_runtime_exists);
+    RUN_TEST(test_bpf_lowering_preserves_drop_before_allow);
+    RUN_TEST(test_bpf_rows_match_intent_oracle_for_golden_policy);
+    RUN_TEST(test_bpf_rows_match_intent_oracle_for_dns_carveout_policy);
+    RUN_TEST(test_bpf_lowering_rejects_more_than_max_rules_before_reading_rows);
     RUN_TEST(test_bpf_lowering_rejects_malformed_arp_row);
     RUN_TEST(test_bpf_lowering_rejects_unsupported_proto_value);
     RUN_TEST(test_bpf_lowering_rejects_duplicate_two_entry_proto_set);

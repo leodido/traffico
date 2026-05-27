@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "dag.h"
@@ -383,64 +384,86 @@ static inline int intent_enforcement_emit_path(const struct intent_enforcement_p
 
 static inline int intent_enforcement_walk_edge(const struct decision_dag *dag,
                                                const struct decision_edge *edge,
-                                               struct intent_enforcement_path path,
+                                               const struct intent_enforcement_path *path,
                                                struct intent_enforcement_plan *plan,
                                                const char **err_msg);
 
 static inline int intent_enforcement_walk_node(const struct decision_dag *dag,
                                                size_t node_index,
-                                               struct intent_enforcement_path path,
+                                               const struct intent_enforcement_path *path,
                                                struct intent_enforcement_plan *plan,
                                                const char **err_msg)
 {
     const struct decision_node *node = &dag->nodes[node_index];
     struct intent_predicate narrowed_predicate = {0};
-    struct intent_enforcement_path true_path = path;
-    struct intent_enforcement_path false_path = path;
+    struct intent_enforcement_path *true_path = malloc(sizeof(*true_path));
+    struct intent_enforcement_path *false_path = malloc(sizeof(*false_path));
     int false_status = 0;
     int true_status = 0;
+    int rc = 0;
+
+    if (!true_path || !false_path)
+    {
+        free(true_path);
+        free(false_path);
+        return intent_fail(err_msg, "enforcement path allocation failed");
+    }
+
+    *true_path = *path;
+    *false_path = *path;
 
     /*
      * The true path carries the current predicate.
      * The false path records that the predicate did not match.
      */
-    false_status = intent_enforcement_add_false_predicate(&false_path,
+    false_status = intent_enforcement_add_false_predicate(false_path,
                                                           &node->predicate,
                                                           err_msg);
     if (false_status < 0)
-        return -1;
-
-    if (!intent_enforcement_narrow_predicate(&path, &node->predicate, &narrowed_predicate))
     {
-        if (false_status == 0)
-            return 0;
-        return intent_enforcement_walk_edge(dag, &node->on_false, false_path, plan, err_msg);
+        rc = -1;
+        goto done;
     }
 
-    true_status = intent_enforcement_apply_true_predicate(&true_path,
+    if (!intent_enforcement_narrow_predicate(path, &node->predicate, &narrowed_predicate))
+    {
+        if (false_status == 0)
+            goto done;
+        rc = intent_enforcement_walk_edge(dag, &node->on_false, false_path, plan, err_msg);
+        goto done;
+    }
+
+    true_status = intent_enforcement_apply_true_predicate(true_path,
                                                           &narrowed_predicate,
                                                           err_msg);
     if (true_status < 0)
-        return -1;
+    {
+        rc = -1;
+        goto done;
+    }
     if (true_status == 0)
     {
         if (false_status == 0)
-            return 0;
-        return intent_enforcement_walk_edge(dag, &node->on_false, false_path, plan, err_msg);
+            goto done;
+        rc = intent_enforcement_walk_edge(dag, &node->on_false, false_path, plan, err_msg);
+        goto done;
     }
 
     if (intent_enforcement_walk_edge(dag, &node->on_true, true_path, plan, err_msg) != 0 ||
         (false_status != 0 &&
          intent_enforcement_walk_edge(dag, &node->on_false, false_path, plan, err_msg) != 0) ||
         intent_enforcement_walk_edge(dag, &node->on_error, path, plan, err_msg) != 0)
-        return -1;
+        rc = -1;
 
-    return 0;
+done:
+    free(true_path);
+    free(false_path);
+    return rc;
 }
 
 static inline int intent_enforcement_walk_edge(const struct decision_dag *dag,
                                                const struct decision_edge *edge,
-                                               struct intent_enforcement_path path,
+                                               const struct intent_enforcement_path *path,
                                                struct intent_enforcement_plan *plan,
                                                const char **err_msg)
 {
@@ -449,11 +472,11 @@ static inline int intent_enforcement_walk_edge(const struct decision_dag *dag,
     case DECISION_TERMINAL_NONE:
         return intent_enforcement_walk_node(dag, edge->node, path, plan, err_msg);
     case DECISION_TERMINAL_ALLOW:
-        return intent_enforcement_emit_path(&path, INTENT_ENFORCEMENT_ALLOW, plan, err_msg);
+        return intent_enforcement_emit_path(path, INTENT_ENFORCEMENT_ALLOW, plan, err_msg);
     case DECISION_TERMINAL_DROP:
         return 0;
     case DECISION_TERMINAL_FORBID:
-        return intent_enforcement_emit_path(&path, INTENT_ENFORCEMENT_DROP, plan, err_msg);
+        return intent_enforcement_emit_path(path, INTENT_ENFORCEMENT_DROP, plan, err_msg);
     default:
         return intent_fail(err_msg, "enforcement path is outside the first supported subset");
     }
@@ -470,7 +493,7 @@ static inline int intent_enforcement_plan_from_dag(const struct decision_dag *da
 
     memset(plan, 0, sizeof(*plan));
     plan->direction = dag->direction;
-    return intent_enforcement_walk_node(dag, dag->root, path, plan, err_msg);
+    return intent_enforcement_walk_node(dag, dag->root, &path, plan, err_msg);
 }
 
 #endif

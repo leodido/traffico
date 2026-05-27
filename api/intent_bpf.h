@@ -12,10 +12,15 @@ _Static_assert(MAX_INTENT_ENFORCEMENT_RULES == INTENT_BPF_MAX_RULES,
                "enforcement and BPF rule limits must match");
 _Static_assert(MAX_INTENT_ENFORCEMENT_PROTOS == INTENT_BPF_MAX_PROTOS,
                "enforcement and BPF proto limits must match");
+_Static_assert(INTENT_ENFORCEMENT_DROP == INTENT_BPF_ACTION_DROP,
+               "enforcement and BPF DROP actions must match");
+_Static_assert(INTENT_ENFORCEMENT_ALLOW == INTENT_BPF_ACTION_ALLOW,
+               "enforcement and BPF ALLOW actions must match");
 
 struct intent_bpf_rule
 {
     uint8_t kind;
+    uint8_t action;
     uint8_t ip_proto_count;
     uint8_t ip_protos[INTENT_BPF_MAX_PROTOS];
     uint8_t l4_dst_port_mode;
@@ -48,6 +53,10 @@ static inline bool intent_bpf_should_destroy_hook(bool cleanup_on_exit,
 
 static inline bool intent_bpf_rule_supported(const struct intent_enforcement_rule *rule)
 {
+    if (rule->action != INTENT_ENFORCEMENT_DROP &&
+        rule->action != INTENT_ENFORCEMENT_ALLOW)
+        return false;
+
     if (rule->kind == INTENT_ENFORCEMENT_RULE_ARP)
         return rule->ip_dst == 0 &&
                rule->l4_dst_port_mode == INTENT_L4_DST_PORT_EXACT &&
@@ -105,16 +114,15 @@ static inline int intent_bpf_plan_from_enforcement(const struct intent_enforceme
         const struct intent_enforcement_rule *src = &plan->rules[i];
         struct intent_bpf_rule *dst = &bpf_plan->rules[i];
 
-        if (src->action == INTENT_ENFORCEMENT_DROP)
-        {
-            return intent_fail(err_msg, "forbids are not supported yet");
-        }
-
         /* This is the BPF backend admissibility gate. */
         if (!intent_bpf_rule_supported(src))
         {
             return intent_fail(err_msg, "Intent BPF plan contains unsupported rule");
         }
+
+        dst->action = src->action == INTENT_ENFORCEMENT_DROP
+                          ? INTENT_BPF_ACTION_DROP
+                          : INTENT_BPF_ACTION_ALLOW;
 
         if (src->kind == INTENT_ENFORCEMENT_RULE_ARP)
         {

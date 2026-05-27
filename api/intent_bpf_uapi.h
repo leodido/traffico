@@ -15,4 +15,10 @@ enum intent_bpf_rule_kind
     INTENT_BPF_RULE_IPV4_L4 = 2,
 };
 
+enum intent_bpf_action
+{
+    INTENT_BPF_ACTION_DROP = 0,
+    INTENT_BPF_ACTION_ALLOW = 1,
+};
+
 #endif

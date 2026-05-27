@@ -7,6 +7,16 @@
 #include "intent.skel.h"
 #include "intent_bpf.h"
 
+enum
+{
+    INTENT_BPF_RODATA_RULE_CAPACITY =
+        sizeof(((struct intent_bpf__rodata *)0)->intent_rules) /
+        sizeof(((struct intent_bpf__rodata *)0)->intent_rules[0])
+};
+
+_Static_assert(INTENT_BPF_RODATA_RULE_CAPACITY == INTENT_BPF_MAX_RULES,
+               "Intent BPF rodata rule capacity must match userspace");
+
 static int attach_intent_bpf(struct config *conf,
                              const struct intent_bpf_plan *plan,
                              after_attach_fn_t cb)
@@ -42,6 +52,7 @@ static int attach_intent_bpf(struct config *conf,
     for (uint32_t i = 0; i < plan->rule_count; i++)
     {
         obj->rodata->intent_rules[i].kind = plan->rules[i].kind;
+        obj->rodata->intent_rules[i].action = plan->rules[i].action;
         obj->rodata->intent_rules[i].ip_proto_count = plan->rules[i].ip_proto_count;
         obj->rodata->intent_rules[i].ip_protos[0] = plan->rules[i].ip_protos[0];
         obj->rodata->intent_rules[i].ip_protos[1] = plan->rules[i].ip_protos[1];

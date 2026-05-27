@@ -570,6 +570,34 @@ static int test_enforcement_errors_accept_null_message_sink(void)
     return 0;
 }
 
+static int test_enforcement_handles_max_mixed_action_envelope(void)
+{
+    struct intent intent = {0};
+    struct intent_enforcement_plan plan = {0};
+    const char *err = NULL;
+    char selector[64];
+
+    intent_init(&intent, INTENT_DIRECTION_EGRESS);
+    for (int i = 1; i <= MAX_INTENT_PERMITS; i++)
+    {
+        snprintf(selector, sizeof(selector), "tcp/10.22.1.1:%d", 10000 + i);
+        CHECK(intent_add_permit(&intent, selector, &err) == 0);
+    }
+    for (int i = 1; i <= MAX_INTENT_FORBIDS; i++)
+    {
+        snprintf(selector, sizeof(selector), "tcp/10.22.1.1:%d", 20000 + i);
+        CHECK(intent_add_forbid(&intent, selector, &err) == 0);
+    }
+
+    CHECK(build_plan(&intent, &plan, &err) == 0);
+    CHECK(plan.rule_count == MAX_INTENT_ENFORCEMENT_RULES);
+    CHECK(plan.rules[0].action == INTENT_ENFORCEMENT_DROP);
+    CHECK(plan.rules[MAX_INTENT_FORBIDS - 1].action == INTENT_ENFORCEMENT_DROP);
+    CHECK(plan.rules[MAX_INTENT_FORBIDS].action == INTENT_ENFORCEMENT_ALLOW);
+    CHECK(plan.rules[MAX_INTENT_ENFORCEMENT_RULES - 1].action == INTENT_ENFORCEMENT_ALLOW);
+    return 0;
+}
+
 int main(void)
 {
     RUN_TEST(test_enforcement_extracts_arp_rule);
@@ -587,6 +615,7 @@ int main(void)
     RUN_TEST(test_enforcement_rejects_mutated_unguarded_port);
     RUN_TEST(test_enforcement_rejects_unsupported_predicate_before_extraction);
     RUN_TEST(test_enforcement_errors_accept_null_message_sink);
+    RUN_TEST(test_enforcement_handles_max_mixed_action_envelope);
     puts("enforcement unit tests: ok");
     return 0;
 }
