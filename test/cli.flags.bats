@@ -38,25 +38,25 @@ bats_require_minimum_version 1.7.0
 @test "--allow and --chain are mutually exclusive" {
     run traffico -i lo --allow arp --chain "allow_ethertype:arp" --dry-run
     [ $status -eq 1 ]
-    [ "${lines[0]}" == "traffico: --allow/--permit and --chain are mutually exclusive" ]
+    [ "${lines[0]}" == "traffico: --allow/--permit/--forbid/--block and --chain are mutually exclusive" ]
 }
 
 @test "--allow and positional program are mutually exclusive" {
     run traffico -i lo --allow arp nop --dry-run
     [ $status -eq 1 ]
-    [ "${lines[0]}" == "traffico: --allow/--permit and positional PROGRAM arguments are mutually exclusive" ]
+    [ "${lines[0]}" == "traffico: --allow/--permit/--forbid/--block and positional PROGRAM arguments are mutually exclusive" ]
 }
 
 @test "--dry-run requires Intent mode" {
     run traffico -i lo --dry-run nop
     [ $status -eq 1 ]
-    [ "${lines[0]}" == "traffico: --dry-run currently requires --allow or --permit" ]
+    [ "${lines[0]}" == "traffico: --dry-run currently requires --allow, --permit, --forbid, or --block" ]
 }
 
 @test "--explain requires Intent mode" {
     run traffico -i lo --explain nop
     [ $status -eq 1 ]
-    [ "${lines[0]}" == "traffico: --explain currently requires --allow or --permit" ]
+    [ "${lines[0]}" == "traffico: --explain currently requires --allow, --permit, --forbid, or --block" ]
 }
 
 @test "--explain=dag is reserved for future Intent debug output" {

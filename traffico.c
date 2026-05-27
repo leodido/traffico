@@ -50,9 +50,15 @@ const char OPT_ALLOW_ARG[] = "PERMIT";
 #define OPT_PERMIT_KEY 0x84
 const char OPT_PERMIT_LONG[] = "permit";
 const char OPT_PERMIT_ARG[] = "PERMIT";
-#define OPT_DRY_RUN_KEY 0x85
+#define OPT_FORBID_KEY 0x85
+const char OPT_FORBID_LONG[] = "forbid";
+const char OPT_FORBID_ARG[] = "FORBID";
+#define OPT_BLOCK_KEY 0x86
+const char OPT_BLOCK_LONG[] = "block";
+const char OPT_BLOCK_ARG[] = "FORBID";
+#define OPT_DRY_RUN_KEY 0x87
 const char OPT_DRY_RUN_LONG[] = "dry-run";
-#define OPT_EXPLAIN_KEY 0x86
+#define OPT_EXPLAIN_KEY 0x88
 const char OPT_EXPLAIN_LONG[] = "explain";
 const char OPT_EXPLAIN_ARG[] = "intent";
 
@@ -66,6 +72,8 @@ const struct argp_option argp_opts[] = {
     {OPT_CHAIN_LONG, OPT_CHAIN_KEY, OPT_CHAIN_ARG, 0, "Attach a chain of programs (e.g., allow_ipv4:10.0.0.1,allow_port:8080)", 1},
     {OPT_ALLOW_LONG, OPT_ALLOW_KEY, OPT_ALLOW_ARG, 0, "Add an Intent permit", 1},
     {OPT_PERMIT_LONG, OPT_PERMIT_KEY, OPT_PERMIT_ARG, 0, "Alias for --allow", 1},
+    {OPT_FORBID_LONG, OPT_FORBID_KEY, OPT_FORBID_ARG, 0, "Add an Intent forbid", 1},
+    {OPT_BLOCK_LONG, OPT_BLOCK_KEY, OPT_BLOCK_ARG, 0, "Alias for --forbid", 1},
     {OPT_DRY_RUN_LONG, OPT_DRY_RUN_KEY, NULL, 0, "Validate Intent without attaching", 1},
     {OPT_EXPLAIN_LONG, OPT_EXPLAIN_KEY, OPT_EXPLAIN_ARG, OPTION_ARG_OPTIONAL, "Print normalized Intent", 1},
     {"", 0, 0, OPTION_DOC, 0, 0},
@@ -191,6 +199,14 @@ static error_t parse_cli(int key, char *arg, struct argp_state *state)
             argp_error(state, "%s: '%s'", err_msg, arg);
         }
         break;
+    case OPT_FORBID_KEY:
+    case OPT_BLOCK_KEY:
+        g_intent_mode = true;
+        if (intent_add_forbid(&g_intent, arg, &err_msg) != 0)
+        {
+            argp_error(state, "%s: '%s'", err_msg, arg);
+        }
+        break;
     case OPT_DRY_RUN_KEY:
         g_intent_dry_run = true;
         break;
@@ -232,19 +248,19 @@ static error_t parse_cli(int key, char *arg, struct argp_state *state)
     case ARGP_KEY_END:
         if (g_intent_mode && g_chain_arg)
         {
-            argp_error(state, "--allow/--permit and --chain are mutually exclusive");
+            argp_error(state, "--allow/--permit/--forbid/--block and --chain are mutually exclusive");
         }
         if (g_intent_mode && state->arg_num > 0)
         {
-            argp_error(state, "--allow/--permit and positional PROGRAM arguments are mutually exclusive");
+            argp_error(state, "--allow/--permit/--forbid/--block and positional PROGRAM arguments are mutually exclusive");
         }
         if (g_intent_dry_run && !g_intent_mode)
         {
-            argp_error(state, "--dry-run currently requires --allow or --permit");
+            argp_error(state, "--dry-run currently requires --allow, --permit, --forbid, or --block");
         }
         if (g_intent_explain && !g_intent_mode)
         {
-            argp_error(state, "--explain currently requires --allow or --permit");
+            argp_error(state, "--explain currently requires --allow, --permit, --forbid, or --block");
         }
         if (g_intent_mode)
         {

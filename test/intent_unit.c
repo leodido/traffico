@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include "api/intent.h"
+#include "intent_semantics.h"
 
 #define CHECK(condition)                                                       \
     do                                                                         \
@@ -213,6 +214,81 @@ static int test_rejects_duplicate_host_wide_l4_permits(void)
     return 0;
 }
 
+static int test_parse_forbids(void)
+{
+    struct intent intent = {0};
+    const char *err = NULL;
+
+    intent_init(&intent, INTENT_DIRECTION_EGRESS);
+
+    CHECK(intent_add_forbid(&intent, "arp", &err) == 0);
+    CHECK(intent_add_forbid(&intent, "dns/10.0.0.53", &err) == 0);
+    CHECK(intent_add_forbid(&intent, "tcp/10.0.0.10:22", &err) == 0);
+    CHECK(intent_add_forbid(&intent, "udp/10.0.0.20:123", &err) == 0);
+
+    CHECK(intent.forbid_count == 4);
+    CHECK(intent.forbids[0].predicate_count == 1);
+    CHECK(intent.forbids[2].predicate_count == 4);
+    CHECK_PREDICATE(&intent.forbids[2].predicates[3],
+                    INTENT_FIELD_L4_DST_PORT,
+                    INTENT_OP_EQ,
+                    1,
+                    22,
+                    0);
+
+    return 0;
+}
+
+static int test_rejects_invalid_and_duplicate_forbids(void)
+{
+    struct intent intent = {0};
+    const char *err = NULL;
+
+    intent_init(&intent, INTENT_DIRECTION_EGRESS);
+
+    CHECK(intent_add_forbid(&intent, "tcp/10.0.0.10", &err) == -1);
+    CHECK(strcmp(err, "invalid forbid") == 0);
+    CHECK(intent_add_forbid(&intent, "dns/10.0.0.53:53", &err) == -1);
+    CHECK(strcmp(err, "dns forbids do not accept a port") == 0);
+    CHECK(intent_add_forbid(&intent, "arp", &err) == 0);
+    CHECK(intent_add_forbid(&intent, "arp", &err) == -1);
+    CHECK(strcmp(err, "duplicate forbid") == 0);
+
+    return 0;
+}
+
+static int test_forbid_duplicates_are_exact_normalized_duplicates(void)
+{
+    struct intent intent = {0};
+    const char *err = NULL;
+
+    intent_init(&intent, INTENT_DIRECTION_EGRESS);
+
+    CHECK(intent_add_forbid(&intent, "dns/10.0.0.53", &err) == 0);
+    CHECK(intent_add_forbid(&intent, "dns/10.0.0.53", &err) == -1);
+    CHECK(strcmp(err, "duplicate forbid") == 0);
+
+    CHECK(intent_add_forbid(&intent, "tcp/10.0.0.53:53", &err) == 0);
+    CHECK(intent.forbid_count == 2);
+
+    return 0;
+}
+
+static int test_allow_forbid_overlap_is_valid_intent(void)
+{
+    struct intent intent = {0};
+    const char *err = NULL;
+
+    intent_init(&intent, INTENT_DIRECTION_EGRESS);
+
+    CHECK(intent_add_permit(&intent, "tcp/10.0.0.10:443", &err) == 0);
+    CHECK(intent_add_forbid(&intent, "tcp/10.0.0.10:443", &err) == 0);
+    CHECK(intent.permit_count == 1);
+    CHECK(intent.forbid_count == 1);
+
+    return 0;
+}
+
 static int test_rejects_invalid_and_duplicate_permits(void)
 {
     struct intent intent = {0};
@@ -286,7 +362,7 @@ static int test_rejects_empty_permits(void)
 static int test_rejects_permit_too_long(void)
 {
     struct intent intent = {0};
-    char permit[MAX_INTENT_PERMIT_INPUT_LEN + 1];
+    char permit[MAX_INTENT_SELECTOR_INPUT_LEN + 1];
     const char *err = NULL;
 
     intent_init(&intent, INTENT_DIRECTION_EGRESS);
@@ -434,12 +510,58 @@ static int test_normalization_is_order_independent(void)
     return 0;
 }
 
+static int test_intent_oracle_evaluates_golden_policy(void)
+{
+    struct intent intent = {0};
+    const char *err = NULL;
+
+    intent_init(&intent, INTENT_DIRECTION_EGRESS);
+    CHECK(intent_add_permit(&intent, "arp", &err) == 0);
+    CHECK(intent_add_permit(&intent, "tcp/10.0.0.10", &err) == 0);
+    CHECK(intent_add_forbid(&intent, "tcp/10.0.0.10:22", &err) == 0);
+    intent_normalize(&intent);
+
+    CHECK(intent_test_oracle_decide(&intent, intent_test_packet_arp()) == INTENT_ACTION_ALLOW);
+    CHECK(intent_test_oracle_decide(&intent, intent_test_packet_tcp(0x0a00000a, 22)) == INTENT_ACTION_DROP);
+    CHECK(intent_test_oracle_decide(&intent, intent_test_packet_tcp(0x0a00000a, 443)) == INTENT_ACTION_ALLOW);
+    CHECK(intent_test_oracle_decide(&intent, intent_test_packet_udp(0x0a00000a, 443)) == INTENT_ACTION_DROP);
+    CHECK(intent_test_oracle_decide(&intent, intent_test_packet_tcp(0x0a000014, 443)) == INTENT_ACTION_DROP);
+    CHECK(intent_test_oracle_decide(&intent, intent_test_packet_malformed()) == INTENT_ACTION_DROP);
+    CHECK(intent_test_oracle_decide(&intent, intent_test_packet_unclassifiable()) == INTENT_ACTION_DROP);
+
+    return 0;
+}
+
+static int test_intent_oracle_evaluates_dns_carveout_policy(void)
+{
+    struct intent intent = {0};
+    const char *err = NULL;
+
+    intent_init(&intent, INTENT_DIRECTION_EGRESS);
+    CHECK(intent_add_permit(&intent, "arp", &err) == 0);
+    CHECK(intent_add_permit(&intent, "tcp/10.0.0.53", &err) == 0);
+    CHECK(intent_add_permit(&intent, "udp/10.0.0.53", &err) == 0);
+    CHECK(intent_add_forbid(&intent, "dns/10.0.0.53", &err) == 0);
+    intent_normalize(&intent);
+
+    CHECK(intent_test_oracle_decide(&intent, intent_test_packet_udp(0x0a000035, 53)) == INTENT_ACTION_DROP);
+    CHECK(intent_test_oracle_decide(&intent, intent_test_packet_tcp(0x0a000035, 53)) == INTENT_ACTION_DROP);
+    CHECK(intent_test_oracle_decide(&intent, intent_test_packet_tcp(0x0a000035, 443)) == INTENT_ACTION_ALLOW);
+    CHECK(intent_test_oracle_decide(&intent, intent_test_packet_udp(0x0a000035, 123)) == INTENT_ACTION_ALLOW);
+
+    return 0;
+}
+
 int main(void)
 {
     RUN_TEST(test_parse_first_permits);
     RUN_TEST(test_parse_ipv4_addresses);
     RUN_TEST(test_parse_host_wide_l4_permits);
     RUN_TEST(test_rejects_duplicate_host_wide_l4_permits);
+    RUN_TEST(test_parse_forbids);
+    RUN_TEST(test_rejects_invalid_and_duplicate_forbids);
+    RUN_TEST(test_forbid_duplicates_are_exact_normalized_duplicates);
+    RUN_TEST(test_allow_forbid_overlap_is_valid_intent);
     RUN_TEST(test_rejects_invalid_and_duplicate_permits);
     RUN_TEST(test_rejects_duplicate_lowered_permits);
     RUN_TEST(test_rejects_empty_permits);
@@ -449,6 +571,8 @@ int main(void)
     RUN_TEST(test_rejects_invalid_manual_predicates);
     RUN_TEST(test_rejects_too_many_permits);
     RUN_TEST(test_normalization_is_order_independent);
+    RUN_TEST(test_intent_oracle_evaluates_golden_policy);
+    RUN_TEST(test_intent_oracle_evaluates_dns_carveout_policy);
     puts("intent unit tests: ok");
     return 0;
 }

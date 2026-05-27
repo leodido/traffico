@@ -9,9 +9,8 @@
 #include <string.h>
 
 #define MAX_INTENT_PERMITS 32
-/* This bound only covers the IPv4 grammar accepted today. */
-#define MAX_INTENT_PERMIT_INPUT_LEN 128
-/* Forbid storage is reserved for the Intent model. */
+/* This bound only covers the IPv4 selector grammar accepted today. */
+#define MAX_INTENT_SELECTOR_INPUT_LEN 128
 #define MAX_INTENT_FORBIDS 32
 #define MAX_INTENT_PREDICATES 6
 #define MAX_INTENT_SET_VALUES 4
@@ -196,57 +195,127 @@ static inline void intent_normalize_predicate_values(struct intent_predicate *pr
           intent_value_qsort_compare);
 }
 
-static inline int intent_validate_predicate_shape(const struct intent_predicate *predicate,
-                                                  const char **err_msg)
+static inline int intent_validate_predicate_shape_msg(const struct intent_predicate *predicate,
+                                                      const char *invalid_msg,
+                                                      const char **err_msg)
 {
     if (predicate->values.count == 0 ||
         predicate->values.count > MAX_INTENT_SET_VALUES)
-        return intent_fail(err_msg, "invalid permit");
+        return intent_fail(err_msg, invalid_msg);
 
     if (predicate->op == INTENT_OP_EQ)
     {
         if (predicate->values.count != 1)
-            return intent_fail(err_msg, "invalid permit");
+            return intent_fail(err_msg, invalid_msg);
         return 0;
     }
 
     if (predicate->op != INTENT_OP_IN)
-        return intent_fail(err_msg, "invalid permit");
+        return intent_fail(err_msg, invalid_msg);
 
     if (predicate->values.count < 2)
-        return intent_fail(err_msg, "invalid permit");
+        return intent_fail(err_msg, invalid_msg);
     for (size_t i = 1; i < predicate->values.count; i++)
     {
         if (predicate->values.values[i - 1] == predicate->values.values[i])
-            return intent_fail(err_msg, "invalid permit");
+            return intent_fail(err_msg, invalid_msg);
     }
     return 0;
 }
 
-static inline void intent_normalize_permit(struct intent_permit *permit)
+static inline int intent_validate_predicate_shape(const struct intent_predicate *predicate,
+                                                  const char **err_msg)
 {
-    for (size_t i = 0; i < permit->predicate_count; i++)
-        intent_normalize_predicate_values(&permit->predicates[i]);
+    return intent_validate_predicate_shape_msg(predicate, "invalid permit", err_msg);
+}
+
+static inline void intent_normalize_predicates(struct intent_predicate *predicates,
+                                               size_t predicate_count)
+{
+    for (size_t i = 0; i < predicate_count; i++)
+        intent_normalize_predicate_values(&predicates[i]);
 
     /* Canonical predicate order makes duplicate detection order independent. */
-    qsort(permit->predicates,
-          permit->predicate_count,
-          sizeof(permit->predicates[0]),
+    qsort(predicates,
+          predicate_count,
+          sizeof(predicates[0]),
           intent_predicate_qsort_compare);
+}
+
+static inline void intent_normalize_permit(struct intent_permit *permit)
+{
+    intent_normalize_predicates(permit->predicates, permit->predicate_count);
+}
+
+static inline void intent_normalize_forbid(struct intent_forbid *forbid)
+{
+    intent_normalize_predicates(forbid->predicates, forbid->predicate_count);
+}
+
+static inline bool intent_predicate_list_equal(const struct intent_predicate *left,
+                                               size_t left_count,
+                                               const struct intent_predicate *right,
+                                               size_t right_count)
+{
+    if (left_count != right_count)
+        return false;
+
+    for (size_t i = 0; i < left_count; i++)
+    {
+        if (!intent_predicate_equal(&left[i], &right[i]))
+            return false;
+    }
+    return true;
 }
 
 static inline bool intent_permit_equal(const struct intent_permit *left,
                                        const struct intent_permit *right)
 {
-    if (left->predicate_count != right->predicate_count)
-        return false;
+    return intent_predicate_list_equal(left->predicates,
+                                       left->predicate_count,
+                                       right->predicates,
+                                       right->predicate_count);
+}
 
-    for (size_t i = 0; i < left->predicate_count; i++)
-    {
-        if (!intent_predicate_equal(&left->predicates[i], &right->predicates[i]))
-            return false;
-    }
-    return true;
+static inline bool intent_forbid_equal(const struct intent_forbid *left,
+                                       const struct intent_forbid *right)
+{
+    return intent_predicate_list_equal(left->predicates,
+                                       left->predicate_count,
+                                       right->predicates,
+                                       right->predicate_count);
+}
+
+static inline int intent_rule_add_predicate(struct intent_predicate *predicates,
+                                            size_t *predicate_count,
+                                            enum intent_predicate_field field,
+                                            enum intent_predicate_op op,
+                                            const uint32_t *values,
+                                            size_t value_count,
+                                            const char *invalid_msg,
+                                            const char **err_msg)
+{
+    struct intent_predicate predicate = {0};
+
+    if (!predicates || !predicate_count || !values)
+        return intent_fail(err_msg, invalid_msg);
+    if (*predicate_count >= MAX_INTENT_PREDICATES ||
+        value_count == 0 ||
+        value_count > MAX_INTENT_SET_VALUES)
+        return intent_fail(err_msg, invalid_msg);
+
+    predicate.field = field;
+    predicate.op = op;
+    predicate.values.count = value_count;
+    for (size_t i = 0; i < value_count; i++)
+        predicate.values.values[i] = values[i];
+    intent_normalize_predicate_values(&predicate);
+    if (intent_validate_predicate_shape_msg(&predicate, invalid_msg, err_msg) != 0)
+        return -1;
+
+    predicates[*predicate_count] = predicate;
+    (*predicate_count)++;
+    return 0;
 }
 
 static inline int intent_add_predicate(struct intent_permit *permit,
@@ -256,26 +325,95 @@ static inline int intent_add_predicate(struct intent_permit *permit,
                                        size_t value_count,
                                        const char **err_msg)
 {
-    struct intent_predicate predicate = {0};
-
-    if (!permit || !values)
+    if (!permit)
         return intent_fail(err_msg, "invalid permit");
-    if (permit->predicate_count >= MAX_INTENT_PREDICATES ||
-        value_count == 0 ||
-        value_count > MAX_INTENT_SET_VALUES)
-        return intent_fail(err_msg, "invalid permit");
+    return intent_rule_add_predicate(permit->predicates,
+                                     &permit->predicate_count,
+                                     field,
+                                     op,
+                                     values,
+                                     value_count,
+                                     "invalid permit",
+                                     err_msg);
+}
 
-    predicate.field = field;
-    predicate.op = op;
-    predicate.values.count = value_count;
-    for (size_t i = 0; i < value_count; i++)
-        predicate.values.values[i] = values[i];
-    intent_normalize_predicate_values(&predicate);
-    if (intent_validate_predicate_shape(&predicate, err_msg) != 0)
-        return -1;
+static inline int intent_add_forbid_predicate(struct intent_forbid *forbid,
+                                              enum intent_predicate_field field,
+                                              enum intent_predicate_op op,
+                                              const uint32_t *values,
+                                              size_t value_count,
+                                              const char **err_msg)
+{
+    if (!forbid)
+        return intent_fail(err_msg, "invalid forbid");
+    return intent_rule_add_predicate(forbid->predicates,
+                                     &forbid->predicate_count,
+                                     field,
+                                     op,
+                                     values,
+                                     value_count,
+                                     "invalid forbid",
+                                     err_msg);
+}
 
-    permit->predicates[permit->predicate_count] = predicate;
-    permit->predicate_count++;
+static inline int intent_add_forbid_eq(struct intent_forbid *forbid,
+                                       enum intent_predicate_field field,
+                                       uint32_t value,
+                                       const char **err_msg)
+{
+    return intent_add_forbid_predicate(forbid, field, INTENT_OP_EQ, &value, 1, err_msg);
+}
+
+static inline int intent_add_forbid_proto_in_tcp_udp(struct intent_forbid *forbid,
+                                                     const char **err_msg)
+{
+    const uint32_t protos[] = {INTENT_IPPROTO_TCP, INTENT_IPPROTO_UDP};
+    return intent_add_forbid_predicate(forbid,
+                                       INTENT_FIELD_IP_PROTO,
+                                       INTENT_OP_IN,
+                                       protos,
+                                       2,
+                                       err_msg);
+}
+
+static inline void intent_forbid_init(struct intent_forbid *forbid)
+{
+    memset(forbid, 0, sizeof(*forbid));
+}
+
+static inline bool intent_has_forbid(const struct intent *intent,
+                                     const struct intent_forbid *candidate)
+{
+    for (size_t i = 0; i < intent->forbid_count; i++)
+    {
+        if (intent_forbid_equal(&intent->forbids[i], candidate))
+            return true;
+    }
+    return false;
+}
+
+static inline int intent_append_forbid(struct intent *intent,
+                                       const struct intent_forbid *forbid,
+                                       const char **err_msg)
+{
+    struct intent_forbid normalized = *forbid;
+    intent_normalize_forbid(&normalized);
+
+    if (normalized.predicate_count == 0)
+        return intent_fail(err_msg, "forbid has no predicates");
+    for (size_t i = 0; i < normalized.predicate_count; i++)
+    {
+        if (intent_validate_predicate_shape_msg(&normalized.predicates[i],
+                                                "invalid forbid",
+                                                err_msg) != 0)
+            return -1;
+    }
+    if (intent_has_forbid(intent, &normalized))
+        return intent_fail(err_msg, "duplicate forbid");
+    if (intent->forbid_count >= MAX_INTENT_FORBIDS)
+        return intent_fail(err_msg, "too many forbids");
+    intent->forbids[intent->forbid_count] = normalized;
+    intent->forbid_count++;
     return 0;
 }
 
@@ -394,11 +532,64 @@ static inline int intent_add_l4_permit(struct intent *intent,
     return intent_append_permit(intent, &permit, err_msg);
 }
 
+static inline int intent_add_arp_forbid(struct intent *intent,
+                                        const char **err_msg)
+{
+    struct intent_forbid forbid;
+    intent_forbid_init(&forbid);
+    if (intent_add_forbid_eq(&forbid, INTENT_FIELD_ETH_TYPE, INTENT_ETH_P_ARP, err_msg) != 0)
+        return -1;
+    return intent_append_forbid(intent, &forbid, err_msg);
+}
+
+static inline int intent_add_dns_forbid(struct intent *intent,
+                                        const char *ip,
+                                        const char **err_msg)
+{
+    uint32_t dst_ip = 0;
+    struct intent_forbid forbid;
+    intent_forbid_init(&forbid);
+
+    if (intent_parse_ipv4(ip, &dst_ip) != 0)
+        return intent_fail(err_msg, "invalid forbid");
+    if (intent_add_forbid_eq(&forbid, INTENT_FIELD_ETH_TYPE, INTENT_ETH_P_IP, err_msg) != 0 ||
+        intent_add_forbid_eq(&forbid, INTENT_FIELD_IP_DST, dst_ip, err_msg) != 0 ||
+        intent_add_forbid_proto_in_tcp_udp(&forbid, err_msg) != 0 ||
+        intent_add_forbid_eq(&forbid, INTENT_FIELD_L4_DST_PORT, INTENT_DNS_PORT, err_msg) != 0)
+        return -1;
+
+    return intent_append_forbid(intent, &forbid, err_msg);
+}
+
+static inline int intent_add_l4_forbid(struct intent *intent,
+                                       uint32_t proto,
+                                       const char *ip,
+                                       const char *port,
+                                       const char **err_msg)
+{
+    uint32_t dst_ip = 0;
+    uint32_t dst_port = 0;
+    struct intent_forbid forbid;
+    intent_forbid_init(&forbid);
+
+    if (!port ||
+        intent_parse_ipv4(ip, &dst_ip) != 0 ||
+        intent_parse_port(port, &dst_port) != 0)
+        return intent_fail(err_msg, "invalid forbid");
+    if (intent_add_forbid_eq(&forbid, INTENT_FIELD_ETH_TYPE, INTENT_ETH_P_IP, err_msg) != 0 ||
+        intent_add_forbid_eq(&forbid, INTENT_FIELD_IP_DST, dst_ip, err_msg) != 0 ||
+        intent_add_forbid_eq(&forbid, INTENT_FIELD_IP_PROTO, proto, err_msg) != 0 ||
+        intent_add_forbid_eq(&forbid, INTENT_FIELD_L4_DST_PORT, dst_port, err_msg) != 0)
+        return -1;
+
+    return intent_append_forbid(intent, &forbid, err_msg);
+}
+
 static inline int intent_add_permit(struct intent *intent,
                                     const char *arg,
                                     const char **err_msg)
 {
-    char buf[MAX_INTENT_PERMIT_INPUT_LEN];
+    char buf[MAX_INTENT_SELECTOR_INPUT_LEN];
     char *kind = NULL;
     char *target = NULL;
     char *port = NULL;
@@ -451,21 +642,92 @@ static inline int intent_add_permit(struct intent *intent,
     return intent_fail(err_msg, "unsupported permit");
 }
 
-static inline int intent_permit_compare(const void *left, const void *right)
+static inline int intent_add_forbid(struct intent *intent,
+                                    const char *arg,
+                                    const char **err_msg)
 {
-    const struct intent_permit *a = left;
-    const struct intent_permit *b = right;
+    char buf[MAX_INTENT_SELECTOR_INPUT_LEN];
+    char *kind = NULL;
+    char *target = NULL;
+    char *port = NULL;
+    size_t arg_len = 0;
 
-    if (a->predicate_count != b->predicate_count)
-        return a->predicate_count < b->predicate_count ? -1 : 1;
+    if (!arg)
+        return intent_fail(err_msg, "invalid forbid");
+    arg_len = strlen(arg);
 
-    for (size_t i = 0; i < a->predicate_count; i++)
+    if (arg_len >= sizeof(buf))
+        return intent_fail(err_msg, "forbid too long");
+
+    if (strcmp(arg, "arp") == 0)
+        return intent_add_arp_forbid(intent, err_msg);
+
+    memcpy(buf, arg, arg_len + 1);
+    kind = buf;
+    target = strchr(kind, '/');
+    if (!target)
+        return intent_fail(err_msg, "unsupported forbid");
+    *target++ = '\0';
+
+    if (strcmp(kind, "dns") == 0)
     {
-        int cmp = intent_predicate_compare(&a->predicates[i], &b->predicates[i]);
+        if (strchr(target, ':'))
+            return intent_fail(err_msg, "dns forbids do not accept a port");
+        return intent_add_dns_forbid(intent, target, err_msg);
+    }
+    if (strcmp(kind, "tcp") == 0)
+    {
+        port = strrchr(target, ':');
+        if (port)
+            *port++ = '\0';
+        return intent_add_l4_forbid(intent, INTENT_IPPROTO_TCP, target, port, err_msg);
+    }
+    if (strcmp(kind, "udp") == 0)
+    {
+        port = strrchr(target, ':');
+        if (port)
+            *port++ = '\0';
+        return intent_add_l4_forbid(intent, INTENT_IPPROTO_UDP, target, port, err_msg);
+    }
+
+    return intent_fail(err_msg, "unsupported forbid");
+}
+
+static inline int intent_rule_compare(const struct intent_predicate *left,
+                                      size_t left_count,
+                                      const struct intent_predicate *right,
+                                      size_t right_count)
+{
+    if (left_count != right_count)
+        return left_count < right_count ? -1 : 1;
+
+    for (size_t i = 0; i < left_count; i++)
+    {
+        int cmp = intent_predicate_compare(&left[i], &right[i]);
         if (cmp != 0)
             return cmp;
     }
     return 0;
+}
+
+static inline int intent_permit_compare(const void *left, const void *right)
+{
+    const struct intent_permit *a = left;
+    const struct intent_permit *b = right;
+    return intent_rule_compare(a->predicates,
+                               a->predicate_count,
+                               b->predicates,
+                               b->predicate_count);
+}
+
+static inline int intent_forbid_compare(const void *left, const void *right)
+{
+    const struct intent_forbid *a = left;
+    const struct intent_forbid *b = right;
+    return intent_rule_compare(a->predicates,
+                               a->predicate_count,
+                               b->predicates,
+                               b->predicate_count);
 }
 
 static inline void intent_normalize(struct intent *intent)
@@ -476,15 +738,23 @@ static inline void intent_normalize(struct intent *intent)
           intent->permit_count,
           sizeof(intent->permits[0]),
           intent_permit_compare);
+
+    for (size_t i = 0; i < intent->forbid_count; i++)
+        intent_normalize_forbid(&intent->forbids[i]);
+    qsort(intent->forbids,
+          intent->forbid_count,
+          sizeof(intent->forbids[0]),
+          intent_forbid_compare);
 }
 
-static inline bool intent_permit_get_eq(const struct intent_permit *permit,
-                                        enum intent_predicate_field field,
-                                        uint32_t *out)
+static inline bool intent_rule_get_eq(const struct intent_predicate *predicates,
+                                      size_t predicate_count,
+                                      enum intent_predicate_field field,
+                                      uint32_t *out)
 {
-    for (size_t i = 0; i < permit->predicate_count; i++)
+    for (size_t i = 0; i < predicate_count; i++)
     {
-        const struct intent_predicate *predicate = &permit->predicates[i];
+        const struct intent_predicate *predicate = &predicates[i];
         if (predicate->field == field &&
             predicate->op == INTENT_OP_EQ &&
             predicate->values.count == 1)
@@ -496,11 +766,26 @@ static inline bool intent_permit_get_eq(const struct intent_permit *permit,
     return false;
 }
 
-static inline bool intent_permit_has_proto_in_tcp_udp(const struct intent_permit *permit)
+static inline bool intent_permit_get_eq(const struct intent_permit *permit,
+                                        enum intent_predicate_field field,
+                                        uint32_t *out)
 {
-    for (size_t i = 0; i < permit->predicate_count; i++)
+    return intent_rule_get_eq(permit->predicates, permit->predicate_count, field, out);
+}
+
+static inline bool intent_forbid_get_eq(const struct intent_forbid *forbid,
+                                        enum intent_predicate_field field,
+                                        uint32_t *out)
+{
+    return intent_rule_get_eq(forbid->predicates, forbid->predicate_count, field, out);
+}
+
+static inline bool intent_rule_has_proto_in_tcp_udp(const struct intent_predicate *predicates,
+                                                    size_t predicate_count)
+{
+    for (size_t i = 0; i < predicate_count; i++)
     {
-        const struct intent_predicate *predicate = &permit->predicates[i];
+        const struct intent_predicate *predicate = &predicates[i];
         if (predicate->field == INTENT_FIELD_IP_PROTO &&
             predicate->op == INTENT_OP_IN &&
             predicate->values.count == 2)
@@ -522,6 +807,16 @@ static inline bool intent_permit_has_proto_in_tcp_udp(const struct intent_permit
     return false;
 }
 
+static inline bool intent_permit_has_proto_in_tcp_udp(const struct intent_permit *permit)
+{
+    return intent_rule_has_proto_in_tcp_udp(permit->predicates, permit->predicate_count);
+}
+
+static inline bool intent_forbid_has_proto_in_tcp_udp(const struct intent_forbid *forbid)
+{
+    return intent_rule_has_proto_in_tcp_udp(forbid->predicates, forbid->predicate_count);
+}
+
 static inline void intent_format_ip(uint32_t ip, char *buf, size_t len)
 {
     struct in_addr addr = {0};
@@ -529,12 +824,159 @@ static inline void intent_format_ip(uint32_t ip, char *buf, size_t len)
     inet_ntop(AF_INET, &addr, buf, len);
 }
 
+static inline bool intent_print_permit_explain(FILE *out,
+                                               size_t index,
+                                               const struct intent_permit *permit)
+{
+    char ip[INET_ADDRSTRLEN];
+    uint32_t eth_type = 0;
+    uint32_t ip_dst = 0;
+    uint32_t proto = 0;
+    uint32_t port = 0;
+    bool has_port = intent_permit_get_eq(permit, INTENT_FIELD_L4_DST_PORT, &port);
+
+    if (intent_permit_get_eq(permit, INTENT_FIELD_ETH_TYPE, &eth_type) &&
+        eth_type == INTENT_ETH_P_ARP)
+    {
+        fprintf(out, "  %zu. ARP\n", index);
+        return false;
+    }
+
+    if (intent_permit_get_eq(permit, INTENT_FIELD_ETH_TYPE, &eth_type) &&
+        eth_type == INTENT_ETH_P_IP &&
+        intent_permit_get_eq(permit, INTENT_FIELD_IP_DST, &ip_dst) &&
+        has_port &&
+        intent_permit_has_proto_in_tcp_udp(permit) &&
+        port == INTENT_DNS_PORT)
+    {
+        intent_format_ip(ip_dst, ip, sizeof(ip));
+        fprintf(out, "  %zu. DNS to %s over TCP or UDP destination port 53\n",
+                index,
+                ip);
+        return true;
+    }
+
+    if (intent_permit_get_eq(permit, INTENT_FIELD_ETH_TYPE, &eth_type) &&
+        eth_type == INTENT_ETH_P_IP &&
+        intent_permit_get_eq(permit, INTENT_FIELD_IP_DST, &ip_dst) &&
+        intent_permit_get_eq(permit, INTENT_FIELD_IP_PROTO, &proto) &&
+        proto == INTENT_IPPROTO_TCP)
+    {
+        intent_format_ip(ip_dst, ip, sizeof(ip));
+        if (has_port)
+        {
+            fprintf(out, "  %zu. TCP to %s destination port %u\n",
+                    index,
+                    ip,
+                    port);
+        }
+        else
+        {
+            fprintf(out, "  %zu. TCP to %s any destination port\n",
+                    index,
+                    ip);
+        }
+        return true;
+    }
+
+    if (intent_permit_get_eq(permit, INTENT_FIELD_ETH_TYPE, &eth_type) &&
+        eth_type == INTENT_ETH_P_IP &&
+        intent_permit_get_eq(permit, INTENT_FIELD_IP_DST, &ip_dst) &&
+        intent_permit_get_eq(permit, INTENT_FIELD_IP_PROTO, &proto) &&
+        proto == INTENT_IPPROTO_UDP)
+    {
+        intent_format_ip(ip_dst, ip, sizeof(ip));
+        if (has_port)
+        {
+            fprintf(out, "  %zu. UDP to %s destination port %u\n",
+                    index,
+                    ip,
+                    port);
+        }
+        else
+        {
+            fprintf(out, "  %zu. UDP to %s any destination port\n",
+                    index,
+                    ip);
+        }
+        return true;
+    }
+
+    fprintf(out, "  %zu. permit cannot be explained by this traffico version\n", index);
+    return false;
+}
+
+static inline bool intent_print_forbid_explain(FILE *out,
+                                               size_t index,
+                                               const struct intent_forbid *forbid)
+{
+    char ip[INET_ADDRSTRLEN];
+    uint32_t eth_type = 0;
+    uint32_t ip_dst = 0;
+    uint32_t proto = 0;
+    uint32_t port = 0;
+    bool has_port = intent_forbid_get_eq(forbid, INTENT_FIELD_L4_DST_PORT, &port);
+
+    if (intent_forbid_get_eq(forbid, INTENT_FIELD_ETH_TYPE, &eth_type) &&
+        eth_type == INTENT_ETH_P_ARP)
+    {
+        fprintf(out, "  %zu. ARP\n", index);
+        return false;
+    }
+
+    if (intent_forbid_get_eq(forbid, INTENT_FIELD_ETH_TYPE, &eth_type) &&
+        eth_type == INTENT_ETH_P_IP &&
+        intent_forbid_get_eq(forbid, INTENT_FIELD_IP_DST, &ip_dst) &&
+        has_port &&
+        intent_forbid_has_proto_in_tcp_udp(forbid) &&
+        port == INTENT_DNS_PORT)
+    {
+        intent_format_ip(ip_dst, ip, sizeof(ip));
+        fprintf(out, "  %zu. DNS to %s over TCP or UDP destination port 53\n",
+                index,
+                ip);
+        return true;
+    }
+
+    if (intent_forbid_get_eq(forbid, INTENT_FIELD_ETH_TYPE, &eth_type) &&
+        eth_type == INTENT_ETH_P_IP &&
+        intent_forbid_get_eq(forbid, INTENT_FIELD_IP_DST, &ip_dst) &&
+        has_port &&
+        intent_forbid_get_eq(forbid, INTENT_FIELD_IP_PROTO, &proto) &&
+        proto == INTENT_IPPROTO_TCP)
+    {
+        intent_format_ip(ip_dst, ip, sizeof(ip));
+        fprintf(out, "  %zu. TCP to %s destination port %u\n",
+                index,
+                ip,
+                port);
+        return true;
+    }
+
+    if (intent_forbid_get_eq(forbid, INTENT_FIELD_ETH_TYPE, &eth_type) &&
+        eth_type == INTENT_ETH_P_IP &&
+        intent_forbid_get_eq(forbid, INTENT_FIELD_IP_DST, &ip_dst) &&
+        has_port &&
+        intent_forbid_get_eq(forbid, INTENT_FIELD_IP_PROTO, &proto) &&
+        proto == INTENT_IPPROTO_UDP)
+    {
+        intent_format_ip(ip_dst, ip, sizeof(ip));
+        fprintf(out, "  %zu. UDP to %s destination port %u\n",
+                index,
+                ip,
+                port);
+        return true;
+    }
+
+    fprintf(out, "  %zu. forbid cannot be explained by this traffico version\n", index);
+    return false;
+}
+
 static inline void intent_print_explain(FILE *out,
                                         const char *ifname,
                                         const struct intent *intent)
 {
-    char ip[INET_ADDRSTRLEN];
-    bool has_l4_permits = false;
+    bool has_l4_rules = false;
 
     /*
      * The caller passes a normalized Intent.
@@ -549,91 +991,27 @@ static inline void intent_print_explain(FILE *out,
 
     for (size_t i = 0; i < intent->permit_count; i++)
     {
-        const struct intent_permit *permit = &intent->permits[i];
-        uint32_t eth_type = 0;
-        uint32_t ip_dst = 0;
-        uint32_t proto = 0;
-        uint32_t port = 0;
-        bool has_port = intent_permit_get_eq(permit, INTENT_FIELD_L4_DST_PORT, &port);
+        if (intent_print_permit_explain(out, i + 1, &intent->permits[i]))
+            has_l4_rules = true;
+    }
 
-        if (intent_permit_get_eq(permit, INTENT_FIELD_ETH_TYPE, &eth_type) &&
-            eth_type == INTENT_ETH_P_ARP)
+    if (intent->forbid_count > 0)
+    {
+        fprintf(out, "\nforbidden traffic:\n");
+        for (size_t i = 0; i < intent->forbid_count; i++)
         {
-            fprintf(out, "  %zu. ARP\n", i + 1);
-            continue;
+            if (intent_print_forbid_explain(out, i + 1, &intent->forbids[i]))
+                has_l4_rules = true;
         }
-
-        if (intent_permit_get_eq(permit, INTENT_FIELD_ETH_TYPE, &eth_type) &&
-            eth_type == INTENT_ETH_P_IP &&
-            intent_permit_get_eq(permit, INTENT_FIELD_IP_DST, &ip_dst) &&
-            has_port &&
-            intent_permit_has_proto_in_tcp_udp(permit) &&
-            port == INTENT_DNS_PORT)
-        {
-            has_l4_permits = true;
-            intent_format_ip(ip_dst, ip, sizeof(ip));
-            fprintf(out, "  %zu. DNS to %s over TCP or UDP destination port 53\n",
-                    i + 1,
-                    ip);
-            continue;
-        }
-
-        if (intent_permit_get_eq(permit, INTENT_FIELD_ETH_TYPE, &eth_type) &&
-            eth_type == INTENT_ETH_P_IP &&
-            intent_permit_get_eq(permit, INTENT_FIELD_IP_DST, &ip_dst) &&
-            intent_permit_get_eq(permit, INTENT_FIELD_IP_PROTO, &proto) &&
-            proto == INTENT_IPPROTO_TCP)
-        {
-            has_l4_permits = true;
-            intent_format_ip(ip_dst, ip, sizeof(ip));
-            if (has_port)
-            {
-                fprintf(out, "  %zu. TCP to %s destination port %u\n",
-                        i + 1,
-                        ip,
-                        port);
-            }
-            else
-            {
-                fprintf(out, "  %zu. TCP to %s any destination port\n",
-                        i + 1,
-                        ip);
-            }
-            continue;
-        }
-
-        if (intent_permit_get_eq(permit, INTENT_FIELD_ETH_TYPE, &eth_type) &&
-            eth_type == INTENT_ETH_P_IP &&
-            intent_permit_get_eq(permit, INTENT_FIELD_IP_DST, &ip_dst) &&
-            intent_permit_get_eq(permit, INTENT_FIELD_IP_PROTO, &proto) &&
-            proto == INTENT_IPPROTO_UDP)
-        {
-            has_l4_permits = true;
-            intent_format_ip(ip_dst, ip, sizeof(ip));
-            if (has_port)
-            {
-                fprintf(out, "  %zu. UDP to %s destination port %u\n",
-                        i + 1,
-                        ip,
-                        port);
-            }
-            else
-            {
-                fprintf(out, "  %zu. UDP to %s any destination port\n",
-                        i + 1,
-                        ip);
-            }
-            continue;
-        }
-
-        fprintf(out, "  %zu. permit cannot be explained by this traffico version\n", i + 1);
     }
 
     fprintf(out, "\ndropped traffic:\n");
     fprintf(out, "  - malformed packets that cannot be safely classified\n");
-    /* Only mention fragment policy when a permit needs L4 classification. */
-    if (has_l4_permits)
+    /* Only mention fragment policy when a rule needs L4 classification. */
+    if (has_l4_rules)
         fprintf(out, "  - TCP/UDP fragments that cannot be fully classified\n");
+    if (intent->forbid_count > 0)
+        fprintf(out, "  - traffic matching a forbid\n");
     fprintf(out, "  - any traffic not matching a permit\n");
 }
 
