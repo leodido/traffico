@@ -4,6 +4,9 @@ traffico is a collection of tools to shape traffic on a network using traffic co
 It can be used via a CLI tool (`traffico`) or as a CNI plugin (`traffico-cni`).
 For a list of the available programs and what they do see the [Built-in programs](#built-in-programs) section.
 
+Intent mode adds network intent guardrails for agent workloads.
+It can express intent-based egress quarantine policies such as "allow ARP, allow DNS to this resolver, allow TCP to this service, but forbid SSH to it".
+
 The built-in programs are very opinionated and made for the needs of the authors but the framework
 is flexible enough to be used for other purposes. You can add programs to the `bpf/` directory
 to extend it to other use cases.
@@ -91,28 +94,62 @@ slot 0 must be `allow_ethertype`, and the layer order must be `L2 -> L3 -> L4`.
 
 #### Intent mode
 
-Use Intent mode when the policy is an additive allowlist such as "ARP OR DNS to
-this resolver OR HTTPS to this service". Intent mode is selected by repeating
-`--allow` or `--permit`; `--permit` is an alias for `--allow`.
+Use Intent mode for network intent guardrails and intent-based egress quarantine.
+It is selected by repeating `--allow` / `--permit` and optionally `--forbid` /
+`--block`.
+`--permit` is an alias for `--allow`.
+`--block` is an alias for `--forbid`.
 
-Supported selectors:
+Intent mode uses deny-overrides semantics:
+
+```text
+malformed or unclassifiable packet => DROP
+matching forbid                   => DROP
+matching permit                   => ALLOW
+no matching permit                => DROP
+```
+
+Supported permit selectors:
+
+- `arp`
+- `dns/IPv4`
+- `tcp/IPv4`
+- `udp/IPv4`
+- `tcp/IPv4:PORT`
+- `udp/IPv4:PORT`
+
+Supported forbid selectors:
 
 - `arp`
 - `dns/IPv4`
 - `tcp/IPv4:PORT`
 - `udp/IPv4:PORT`
 
-`dns/IPv4` permits DNS to that IPv4 resolver over TCP or UDP destination port
-53. TCP and UDP selectors match packets whose destination endpoint is
-`IPv4:PORT`. Any traffic not matching a permit is dropped, and packets that
-cannot be safely classified are dropped.
+`dns/IPv4` matches DNS to that IPv4 resolver over TCP or UDP destination port
+53. `tcp/IPv4` and `udp/IPv4` permit any destination port on that IPv4 host.
+The `tcp/IPv4:PORT` and `udp/IPv4:PORT` selectors match one destination
+endpoint.
+Any traffic not matching a permit is dropped, and packets that cannot be safely
+classified are dropped.
+
+This allows broad service access with narrow carve-outs:
 
 ```bash
 traffico --ifname=eth0 --at=EGRESS \
   --allow arp \
   --allow dns/10.0.0.53 \
-  --allow tcp/10.0.0.10:443 \
-  --allow udp/10.0.0.20:123
+  --allow tcp/10.0.0.10 \
+  --forbid tcp/10.0.0.10:22
+```
+
+For a DNS carve-out inside broader TCP and UDP access to one host:
+
+```bash
+traffico --ifname=eth0 --at=EGRESS \
+  --allow arp \
+  --allow tcp/10.0.0.53 \
+  --allow udp/10.0.0.53 \
+  --forbid dns/10.0.0.53
 ```
 
 Use `--dry-run` to compile and validate without attaching:
@@ -120,7 +157,8 @@ Use `--dry-run` to compile and validate without attaching:
 ```bash
 traffico --ifname=eth0 --at=EGRESS \
   --allow arp \
-  --allow tcp/10.0.0.10:443 \
+  --allow tcp/10.0.0.10 \
+  --forbid tcp/10.0.0.10:22 \
   --dry-run
 ```
 
@@ -129,10 +167,10 @@ fails:
 
 ```bash
 traffico --ifname=eth0 --at=EGRESS \
-  --allow udp/10.0.0.20:123 \
   --allow arp \
-  --allow tcp/10.0.0.10:443 \
   --allow dns/10.0.0.53 \
+  --allow tcp/10.0.0.10 \
+  --forbid tcp/10.0.0.10:22 \
   --dry-run --explain
 ```
 
@@ -140,6 +178,15 @@ Intent mode is mutually exclusive with `--chain` and with positional
 `PROGRAM [INPUT]`. The first Intent backend is the Linux BPF egress adapter.
 `--at=INGRESS` is parsed and can be explained, but backend validation rejects
 it until an ingress backend is implemented.
+
+Current Intent boundaries:
+
+- Intent is CLI-only; `traffico-cni` still uses built-in programs.
+- Intent supports Linux TC BPF egress only.
+- Host-wide `tcp/IPv4` and `udp/IPv4` are permits only.
+- Host-wide TCP/UDP forbids are not supported yet.
+- CIDR, port ranges, source predicates, labels, DNS names, ICMP selectors,
+  policy files, and `--explain=dag` are reserved for future releases.
 
 ### traffico-cni
 
