@@ -247,7 +247,7 @@ static int test_rejects_invalid_and_duplicate_forbids(void)
     intent_init(&intent, INTENT_DIRECTION_EGRESS);
 
     CHECK(intent_add_forbid(&intent, "tcp/10.0.0.10", &err) == -1);
-    CHECK(strcmp(err, "invalid forbid") == 0);
+    CHECK(strcmp(err, "host-wide TCP/UDP forbids are not supported; use tcp/IP:PORT or udp/IP:PORT") == 0);
     CHECK(intent_add_forbid(&intent, "dns/10.0.0.53:53", &err) == -1);
     CHECK(strcmp(err, "dns forbids do not accept a port") == 0);
     CHECK(intent_add_forbid(&intent, "arp", &err) == 0);

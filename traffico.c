@@ -2,6 +2,7 @@
 #include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <strings.h>
 #include <errno.h>
@@ -19,7 +20,7 @@
 #include "chain.h"
 #include "intent_bpf_loader.h"
 
-const char *argp_program_version = TOOL_NAME " 0.0";
+const char *argp_program_version = TOOL_NAME " 0.6.0";
 const char *argp_program_bug_address = "https://github.com/leodido/traffico/issues";
 // Visibility attribute needed to override glibc's weak symbol
 // when built with -fvisibility=hidden.
@@ -29,6 +30,11 @@ const char argp_program_doc[] =
     "\n"
     "Isolate your host the eBPF way.\n"
     "\v"
+    "  INTENT MODE\n"
+    "  - Intent permits: arp | dns/IP | tcp/IP[:PORT] | udp/IP[:PORT]\n"
+    "  - Intent forbids: arp | dns/IP | tcp/IP:PORT | udp/IP:PORT\n"
+    "  - Intent backend: Linux TC BPF egress only; try --dry-run --explain first\n"
+    "\n"
     "  PROGRAMS\n" PROGRAMS_DESCRIPTION;
 
 const char OPT_VERBOSE_LONG[] = "verbose";
@@ -61,6 +67,8 @@ const char OPT_DRY_RUN_LONG[] = "dry-run";
 #define OPT_EXPLAIN_KEY 0x88
 const char OPT_EXPLAIN_LONG[] = "explain";
 const char OPT_EXPLAIN_ARG[] = "intent";
+#define OPT_VERSION_KEY 0x89
+const char OPT_VERSION_LONG[] = "version";
 
 const struct argp_option argp_opts[] = {
 
@@ -76,6 +84,7 @@ const struct argp_option argp_opts[] = {
     {OPT_BLOCK_LONG, OPT_BLOCK_KEY, OPT_BLOCK_ARG, 0, "Alias for --forbid", 1},
     {OPT_DRY_RUN_LONG, OPT_DRY_RUN_KEY, NULL, 0, "Validate Intent without attaching", 1},
     {OPT_EXPLAIN_LONG, OPT_EXPLAIN_KEY, OPT_EXPLAIN_ARG, OPTION_ARG_OPTIONAL, "Print normalized Intent", 1},
+    {OPT_VERSION_LONG, OPT_VERSION_KEY, NULL, 0, "Print version and exit", 1},
     {"", 0, 0, OPTION_DOC, 0, 0},
     {0} // .
 
@@ -217,6 +226,9 @@ static error_t parse_cli(int key, char *arg, struct argp_state *state)
             argp_error(state, "unsupported --explain mode: '%s'", arg);
         }
         break;
+    case OPT_VERSION_KEY:
+        printf("%s\n", argp_program_version);
+        exit(0);
 
     // Arguments
     case ARGP_KEY_ARG:
@@ -261,6 +273,10 @@ static error_t parse_cli(int key, char *arg, struct argp_state *state)
         if (g_intent_explain && !g_intent_mode)
         {
             argp_error(state, "--explain currently requires --allow, --permit, --forbid, or --block");
+        }
+        if (g_intent_mode && g_intent.permit_count == 0 && g_intent.forbid_count > 0)
+        {
+            argp_error(state, "--forbid/--block requires at least one --allow/--permit");
         }
         if (g_intent_mode)
         {

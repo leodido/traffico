@@ -572,8 +572,9 @@ static inline int intent_add_l4_forbid(struct intent *intent,
     struct intent_forbid forbid;
     intent_forbid_init(&forbid);
 
-    if (!port ||
-        intent_parse_ipv4(ip, &dst_ip) != 0 ||
+    if (!port)
+        return intent_fail(err_msg, "host-wide TCP/UDP forbids are not supported; use tcp/IP:PORT or udp/IP:PORT");
+    if (intent_parse_ipv4(ip, &dst_ip) != 0 ||
         intent_parse_port(port, &dst_port) != 0)
         return intent_fail(err_msg, "invalid forbid");
     if (intent_add_forbid_eq(&forbid, INTENT_FIELD_ETH_TYPE, INTENT_ETH_P_IP, err_msg) != 0 ||

@@ -132,6 +132,16 @@ endpoint.
 Any traffic not matching a permit is dropped, and packets that cannot be safely
 classified are dropped.
 
+What v0.6 can do today:
+
+- Put a workload behind a dedicated Linux egress interface, container veth, or
+  network namespace veth.
+- Attach Intent mode to that interface at egress.
+- Permit the DNS, ARP, TCP, and UDP traffic the workload needs.
+- Add narrow forbids for denied ports, DNS, or ARP carve-outs.
+- Treat the policy as interface-scoped. It is not process-, agent-, container-,
+  or CNI-scoped by itself.
+
 This allows broad service access with narrow carve-outs:
 
 ```bash
@@ -187,6 +197,13 @@ Current Intent boundaries:
 - Host-wide TCP/UDP forbids are not supported yet.
 - CIDR, port ranges, source predicates, labels, DNS names, ICMP selectors,
   policy files, and `--explain=dag` are reserved for future releases.
+
+Current Intent limits:
+
+- Up to 32 permits and 32 forbids.
+- The Linux TC BPF backend enforces up to 64 action-bearing rows.
+- Duplicate permits and duplicate forbids are rejected.
+- The 33rd permit or forbid is rejected before attach.
 
 ### traffico-cni
 

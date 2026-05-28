@@ -10,10 +10,24 @@ bats_require_minimum_version 1.7.0
     [ "${lines[0]}" == 'Usage: traffico [OPTION...] [PROGRAM [INPUT]]' ]
 }
 
+@test "help documents Intent selector grammar and scope" {
+    run traffico --help
+    [ $status -eq 0 ]
+    [[ "$output" == *"Intent permits: arp | dns/IP | tcp/IP[:PORT] | udp/IP[:PORT]"* ]]
+    [[ "$output" == *"Intent forbids: arp | dns/IP | tcp/IP:PORT | udp/IP:PORT"* ]]
+    [[ "$output" == *"Intent backend: Linux TC BPF egress only; try --dry-run --explain first"* ]]
+}
+
 @test "usage" {
     run traffico --usage
     [ $status -eq 0 ]
     [ "${lines[0]%% *}" == 'Usage:' ]
+}
+
+@test "version reports the release version" {
+    run traffico --version
+    [ $status -eq 0 ]
+    [ "${lines[0]}" == 'traffico 0.6.0' ]
 }
 
 @test "--allow accepts first Intent values in dry-run mode" {
