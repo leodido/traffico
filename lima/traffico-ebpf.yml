@@ -88,12 +88,12 @@ provision:
     script: |
       set -eux
 
-      if ! command -v xmake >/dev/null 2>&1; then
-        curl -fsSL https://xmake.io/shget.text | bash
-      fi
-
       profile="${HOME}/.profile"
       touch "${profile}"
-      grep -q '.local/bin' "${profile}" || echo 'export PATH="${HOME}/.local/bin:${PATH}"' >> "${profile}"
+      grep -q 'export PATH="${HOME}/.local/bin:${PATH}"' "${profile}" || echo 'export PATH="${HOME}/.local/bin:${PATH}"' >> "${profile}"
 
+      export PATH="${HOME}/.local/bin:${PATH}"
+      curl -fsSLo /tmp/xmake-v3.0.9.gz.run https://github.com/xmake-io/xmake/releases/download/v3.0.9/xmake-v3.0.9.gz.run
+      sh /tmp/xmake-v3.0.9.gz.run --accept --noprogress
+      hash -r
       "${HOME}/.local/bin/xmake" --version
