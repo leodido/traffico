@@ -82,3 +82,17 @@ wait_for_intent_tc_state() {
     assert_packet_blocked "${NETNS}" 22004 \
         --type udp --dst-ip "${PEER_ADDR}" --dst-port 123
 }
+
+@test "Intent host-wide TCP and UDP permits drop subsequent fragments" {
+    ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress \
+        --allow arp \
+        --allow "tcp/${VETH_ADDR}" \
+        --allow "udp/${VETH_ADDR}" >/dev/null 3>&- &
+    wait_for_intent_tc_state
+
+    # v0.6 only enforces TCP/UDP Intent rules when the transport header exists.
+    assert_packet_blocked "${NETNS}" 22005 \
+        --type fragment-subsequent --dst-ip "${VETH_ADDR}" --proto-override 6
+    assert_packet_blocked "${NETNS}" 22006 \
+        --type fragment-subsequent --dst-ip "${VETH_ADDR}" --proto-override 17
+}

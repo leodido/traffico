@@ -114,7 +114,9 @@ USAGE
             port on that IPv4 host. The tcp/IPv4:PORT and udp/IPv4:PORT
             selectors match one destination endpoint. Any traffic not matching
             a permit is dropped, and packets that cannot be safely classified
-            are dropped.
+            are dropped. In v0.6, Intent mode drops subsequent TCP/UDP
+            fragments because the TCP/UDP header is not present in those
+            packets.
 
             What v0.6 can do today:
                 Put a workload behind a dedicated Linux egress interface,
@@ -168,6 +170,8 @@ USAGE
                 Intent is CLI-only; traffico-cni still uses built-in programs.
                 Intent supports Linux TC BPF egress only.
                 Host-wide tcp/IPv4 and udp/IPv4 are permits only.
+                Subsequent TCP/UDP fragments are dropped, even under host-wide
+                permits.
                 Host-wide TCP/UDP forbids are not supported yet.
                 CIDR, port ranges, source predicates, labels, DNS names, ICMP
                 selectors, policy files, and --explain=dag are reserved for
