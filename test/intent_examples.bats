@@ -18,6 +18,8 @@ setup() {
     NETNS="ns$((RANDOM % 10))"
     RESOLVER_ADDR="198.51.100.53"
     SERVICE_ADDR="203.0.113.10"
+    API_ADDR="203.0.113.20"
+    TIME_ADDR="192.0.2.123"
     new_netns "${NETNS}"
     setup_net "${NETNS}"
     arp_prewarm "${NETNS}"
@@ -108,4 +110,33 @@ wait_for_intent_tc_state() {
         --type udp --dst-ip "${SERVICE_ADDR}" --dst-port 9999
     assert_packet_blocked "${NETNS}" 23202 \
         --type udp --dst-ip "${SERVICE_ADDR}" --dst-port 123
+}
+
+@test "ai agent egress quarantine allows resolver api and time source only" {
+    ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress \
+        --allow arp \
+        --allow "dns/${RESOLVER_ADDR}" \
+        --allow "tcp/${API_ADDR}:443" \
+        --allow "udp/${TIME_ADDR}:123" \
+        --block "tcp/${API_ADDR}:22" >/dev/null 3>&- &
+    wait_for_intent_tc_state
+
+    assert_packet_seen "${NETNS}" 23301 \
+        --type arp-request --src-ip "${PEER_ADDR}" --dst-ip "${VETH_ADDR}"
+    assert_packet_seen "${NETNS}" 23302 \
+        --type udp --dst-ip "${RESOLVER_ADDR}" --dst-port 53
+    assert_packet_seen "${NETNS}" 23303 \
+        --type tcp --dst-ip "${RESOLVER_ADDR}" --dst-port 53
+    assert_packet_seen "${NETNS}" 23304 \
+        --type tcp --dst-ip "${API_ADDR}" --dst-port 443
+    assert_packet_seen "${NETNS}" 23305 \
+        --type udp --dst-ip "${TIME_ADDR}" --dst-port 123
+    assert_packet_blocked "${NETNS}" 23306 \
+        --type tcp --dst-ip "${API_ADDR}" --dst-port 22
+    assert_packet_blocked "${NETNS}" 23307 \
+        --type udp --dst-ip "${API_ADDR}" --dst-port 443
+    assert_packet_blocked "${NETNS}" 23308 \
+        --type tcp --dst-ip "${SERVICE_ADDR}" --dst-port 443
+    assert_packet_blocked "${NETNS}" 23309 \
+        --type icmp --dst-ip "${API_ADDR}"
 }
