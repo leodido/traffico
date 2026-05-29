@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Mapping
 
 
-DEFAULT_TESTS = ["test/intent_examples.bats"]
+DEFAULT_TESTS = ["test/intent_examples.bats", "test/intent_verifier.bats"]
 DEFAULT_REPO_IN_VM = str(Path(__file__).resolve().parents[1])
 
 

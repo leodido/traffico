@@ -56,24 +56,25 @@ If the VM already exists and Lima rejects `--name`, start it by instance name:
 limactl start traffico-ebpf
 ```
 
-Dry-run the transport command before running the VM smoke gate:
+Dry-run the default release smoke gate before running it in the VM:
 
 ```sh
-python3 tools/lima_traffico_runner.py --dry-run --test test/intent_examples.bats
+python3 tools/lima_traffico_runner.py --dry-run
 ```
 
-Run the real-world Intent examples:
+Run the default release smoke gate:
+
+```sh
+python3 tools/lima_traffico_runner.py
+```
+
+The default gate runs both real-world Intent examples and the verifier envelope.
+Do not treat examples-only output as release-complete evidence.
+
+Run only the examples when narrowing a failure:
 
 ```sh
 python3 tools/lima_traffico_runner.py --test test/intent_examples.bats
-```
-
-Run the examples plus verifier envelope:
-
-```sh
-python3 tools/lima_traffico_runner.py \
-  --test test/intent_examples.bats \
-  --test test/intent_verifier.bats
 ```
 
 Inspect the runner report:

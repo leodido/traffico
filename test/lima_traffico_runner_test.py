@@ -16,7 +16,7 @@ import lima_traffico_runner
 
 
 class LimaTrafficoRunnerTest(unittest.TestCase):
-    def test_guest_command_runs_default_intent_examples(self):
+    def test_guest_command_runs_default_release_smoke_gate(self):
         command = lima_traffico_runner.build_guest_command(
             repo_in_vm="/Users/me/traffico",
             tests=[],
@@ -29,7 +29,10 @@ class LimaTrafficoRunnerTest(unittest.TestCase):
         self.assertIn("cd '/Users/me/traffico'", command)
         self.assertIn("'xmake' 'f' '-c' '-y' '--generate-vmlinux=y' '--require-bpftool=y'", command)
         self.assertIn("'xmake' 'build' '-y'", command)
-        self.assertIn("'xmake' 'run' 'test' 'test/intent_examples.bats'", command)
+        self.assertIn(
+            "'xmake' 'run' 'test' 'test/intent_examples.bats' 'test/intent_verifier.bats'",
+            command,
+        )
         self.assertNotIn("--allow", command)
         self.assertNotIn("--forbid", command)
 
@@ -73,7 +76,7 @@ class LimaTrafficoRunnerTest(unittest.TestCase):
 
             run.assert_not_called()
             self.assertEqual(data["status"], "dry-run")
-            self.assertEqual(data["tests"], ["test/intent_examples.bats"])
+            self.assertEqual(data["tests"], ["test/intent_examples.bats", "test/intent_verifier.bats"])
             self.assertTrue(report.exists())
             written = json.loads(report.read_text())
             self.assertEqual(written["lima_command"][0], "limactl")
