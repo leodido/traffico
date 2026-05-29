@@ -1,0 +1,99 @@
+minimumLimaVersion: "1.0.0"
+
+images:
+  - location: "https://cloud-images.ubuntu.com/releases/24.04/release-20250115/ubuntu-24.04-server-cloudimg-amd64.img"
+    arch: "x86_64"
+    digest: "sha256:28d2f9df3ac0d24440eaf6998507df3405142cf94a55e1f90802c78e43d2d9df"
+  - location: "https://cloud-images.ubuntu.com/releases/24.04/release-20250115/ubuntu-24.04-server-cloudimg-arm64.img"
+    arch: "aarch64"
+    digest: "sha256:f11282a728ad42f8bfe0b646a6807674d79a019bfc229d80032345dd3228a2db"
+  - location: "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64.img"
+    arch: "x86_64"
+  - location: "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-arm64.img"
+    arch: "aarch64"
+
+memory: "4GiB"
+cpus: 4
+disk: "50GiB"
+vmType: vz
+
+mounts:
+  - location: "~"
+    writable: true
+
+rosetta:
+  enabled: true
+  binfmt: true
+
+provision:
+  - mode: system
+    script: |
+      set -eux
+      export DEBIAN_FRONTEND=noninteractive
+
+      apt-get update
+      apt-get install --yes --no-install-recommends \
+        apt-transport-https \
+        bzip2 \
+        ca-certificates \
+        clang \
+        cmake \
+        curl \
+        diffutils \
+        dwarves \
+        g++ \
+        gcc \
+        git \
+        iproute2 \
+        iputils-ping \
+        jq \
+        libelf-dev \
+        libffi-dev \
+        libpcap-dev \
+        libssl-dev \
+        linux-headers-generic \
+        linux-libc-dev \
+        llvm \
+        m4 \
+        make \
+        ninja-build \
+        pkg-config \
+        psmisc \
+        python3 \
+        python3-pip \
+        python3-scapy \
+        sudo \
+        unzip \
+        xz-utils \
+        zlib1g-dev
+
+      apt-get install --yes bpftool || true
+      apt-get install --yes linux-tools-common linux-tools-$(uname -r) || true
+      apt-get install --yes linux-tools-generic || true
+      apt-get install --yes linux-tools-virtual || true
+
+      if ! command -v bpftool >/dev/null 2>&1; then
+        bpftool_path="$(find /usr/lib/linux-tools* -type f -name bpftool 2>/dev/null | sort | tail -n 1)"
+        test -n "${bpftool_path}"
+        ln -sf "${bpftool_path}" /usr/local/bin/bpftool
+      fi
+
+      mkdir -p /sys/fs/bpf
+      mountpoint -q /sys/fs/bpf || mount -t bpf bpffs /sys/fs/bpf
+
+      clang --version
+      bpftool version
+      python3 -c "import scapy; print('scapy ok')"
+  - mode: user
+    script: |
+      set -eux
+
+      if ! command -v xmake >/dev/null 2>&1; then
+        curl -fsSL https://xmake.io/shget.text | bash
+      fi
+
+      profile="${HOME}/.profile"
+      touch "${profile}"
+      grep -q '.local/bin' "${profile}" || echo 'export PATH="${HOME}/.local/bin:${PATH}"' >> "${profile}"
+
+      "${HOME}/.local/bin/xmake" --version
