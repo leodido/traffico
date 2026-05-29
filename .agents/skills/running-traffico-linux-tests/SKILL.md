@@ -80,6 +80,11 @@ docker start -ai traffico-ubuntu-test-runner
 
 If the runner command, image, or mount changes, remove only the named container and recreate it. Keep `traffico-ubuntu-xmake-cache` unless intentionally forcing xmake to rebuild package dependencies.
 
+## Host-Realistic Smoke Tests
+
+Use this skill for fast Linux test iteration.
+Use `running-traffico-smoke-tests` when release confidence requires the Lima `traffico-ebpf` VM.
+
 ## Troubleshooting Generated State
 
 If the Docker build fails inside generated headers under `build/.gens` after branch switches, xmake graph changes, or partial rebuilds, suspect stale generated state before blaming CI or BPF source.
