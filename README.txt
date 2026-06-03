@@ -130,35 +130,35 @@ USAGE
             This allows broad service access with narrow carve-outs:
 
             traffico --ifname=eth0 --at=EGRESS \
-                --allow arp \
-                --allow dns/10.0.0.53 \
-                --allow tcp/10.0.0.10 \
-                --block tcp/10.0.0.10:22
+                --allow  arp \
+                --allow  dns/10.0.0.53 \
+                --allow  tcp/10.0.0.10 \
+                --block  tcp/10.0.0.10:22
 
             For a DNS carve-out inside broader TCP and UDP access to one host:
 
             traffico --ifname=eth0 --at=EGRESS \
-                --allow arp \
-                --allow tcp/10.0.0.53 \
-                --allow udp/10.0.0.53 \
-                --block dns/10.0.0.53
+                --allow  arp \
+                --allow  tcp/10.0.0.53 \
+                --allow  udp/10.0.0.53 \
+                --block  dns/10.0.0.53
 
             Use --dry-run to compile and validate without attaching:
 
             traffico --ifname=eth0 --at=EGRESS \
-                --allow arp \
-                --allow tcp/10.0.0.10 \
-                --block tcp/10.0.0.10:22 \
+                --allow  arp \
+                --allow  tcp/10.0.0.10 \
+                --block  tcp/10.0.0.10:22 \
                 --dry-run
 
             Use --explain to print the normalized Intent before validation
             succeeds or fails:
 
             traffico --ifname=eth0 --at=EGRESS \
-                --allow arp \
-                --allow dns/10.0.0.53 \
-                --allow tcp/10.0.0.10 \
-                --block tcp/10.0.0.10:22 \
+                --allow  arp \
+                --allow  dns/10.0.0.53 \
+                --allow  tcp/10.0.0.10 \
+                --block  tcp/10.0.0.10:22 \
                 --dry-run --explain
 
             Intent mode is mutually exclusive with --chain and with positional

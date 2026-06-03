@@ -148,29 +148,29 @@ This allows broad service access with narrow carve-outs:
 
 ```bash
 traffico --ifname=eth0 --at=EGRESS \
-  --allow arp \
-  --allow dns/10.0.0.53 \
-  --allow tcp/10.0.0.10 \
-  --block tcp/10.0.0.10:22
+  --allow  arp \
+  --allow  dns/10.0.0.53 \
+  --allow  tcp/10.0.0.10 \
+  --block  tcp/10.0.0.10:22
 ```
 
 For a DNS carve-out inside broader TCP and UDP access to one host:
 
 ```bash
 traffico --ifname=eth0 --at=EGRESS \
-  --allow arp \
-  --allow tcp/10.0.0.53 \
-  --allow udp/10.0.0.53 \
-  --block dns/10.0.0.53
+  --allow  arp \
+  --allow  tcp/10.0.0.53 \
+  --allow  udp/10.0.0.53 \
+  --block  dns/10.0.0.53
 ```
 
 Use `--dry-run` to compile and validate without attaching:
 
 ```bash
 traffico --ifname=eth0 --at=EGRESS \
-  --allow arp \
-  --allow tcp/10.0.0.10 \
-  --block tcp/10.0.0.10:22 \
+  --allow  arp \
+  --allow  tcp/10.0.0.10 \
+  --block  tcp/10.0.0.10:22 \
   --dry-run
 ```
 
@@ -179,10 +179,10 @@ fails:
 
 ```bash
 traffico --ifname=eth0 --at=EGRESS \
-  --allow arp \
-  --allow dns/10.0.0.53 \
-  --allow tcp/10.0.0.10 \
-  --block tcp/10.0.0.10:22 \
+  --allow  arp \
+  --allow  dns/10.0.0.53 \
+  --allow  tcp/10.0.0.10 \
+  --block  tcp/10.0.0.10:22 \
   --dry-run --explain
 ```
 
