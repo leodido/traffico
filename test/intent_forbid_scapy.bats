@@ -53,8 +53,8 @@ wait_for_intent_tc_state() {
 
 @test "Intent forbid blocks a port inside a host-wide TCP permit" {
     ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress \
-        --allow arp \
-        --allow "tcp/${VETH_ADDR}" \
+        --permit arp \
+        --permit "tcp/${VETH_ADDR}" \
         --forbid "tcp/${VETH_ADDR}:22" >/dev/null 3>&- &
     wait_for_intent_tc_state
 
@@ -68,10 +68,10 @@ wait_for_intent_tc_state() {
         --type udp --dst-ip "${VETH_ADDR}" --dst-port 22
 }
 
-@test "Intent mixed allow forbid stays fail closed for VLAN IPv4 packets" {
+@test "Intent mixed permit forbid stays fail closed for VLAN IPv4 packets" {
     ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress \
-        --allow arp \
-        --allow "tcp/${VETH_ADDR}" \
+        --permit arp \
+        --permit "tcp/${VETH_ADDR}" \
         --forbid "tcp/${VETH_ADDR}:22" >/dev/null 3>&- &
     wait_for_intent_tc_state
 
@@ -92,10 +92,10 @@ wait_for_intent_tc_state() {
         --type udp --dst-ip "${VETH_ADDR}" --dst-port 123
 }
 
-@test "Intent forbid beats an exact allow" {
+@test "Intent forbid beats an exact permit" {
     ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress \
-        --allow arp \
-        --allow "tcp/${VETH_ADDR}:443" \
+        --permit arp \
+        --permit "tcp/${VETH_ADDR}:443" \
         --forbid "tcp/${VETH_ADDR}:443" >/dev/null 3>&- &
     wait_for_intent_tc_state
 
@@ -103,9 +103,9 @@ wait_for_intent_tc_state() {
         --type tcp --dst-ip "${VETH_ADDR}" --dst-port 443
 }
 
-@test "Intent forbid ARP beats allow ARP" {
+@test "Intent forbid ARP beats permit ARP" {
     ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress \
-        --allow arp \
+        --permit arp \
         --forbid arp >/dev/null 3>&- &
     wait_for_intent_tc_state
 
@@ -113,10 +113,10 @@ wait_for_intent_tc_state() {
         --type arp-request --src-ip "${PEER_ADDR}" --dst-ip "${VETH_ADDR}"
 }
 
-@test "Intent forbid DNS beats allow DNS" {
+@test "Intent forbid DNS beats permit DNS" {
     ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress \
-        --allow arp \
-        --allow "dns/${VETH_ADDR}" \
+        --permit arp \
+        --permit "dns/${VETH_ADDR}" \
         --forbid "dns/${VETH_ADDR}" >/dev/null 3>&- &
     wait_for_intent_tc_state
 
@@ -128,9 +128,9 @@ wait_for_intent_tc_state() {
 
 @test "Intent DNS forbid carves out host-wide TCP and UDP permits" {
     ip netns exec "${NETNS}" traffico -i "${PEER}" --at egress \
-        --allow arp \
-        --allow "tcp/${VETH_ADDR}" \
-        --allow "udp/${VETH_ADDR}" \
+        --permit arp \
+        --permit "tcp/${VETH_ADDR}" \
+        --permit "udp/${VETH_ADDR}" \
         --forbid "dns/${VETH_ADDR}" >/dev/null 3>&- &
     wait_for_intent_tc_state
 

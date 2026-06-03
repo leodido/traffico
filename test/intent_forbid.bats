@@ -13,7 +13,7 @@ output_contains() {
 
 @test "--forbid selects Intent mode and is BPF admissible" {
     run traffico -i lo --at egress \
-        --allow tcp/10.0.0.10 \
+        --permit tcp/10.0.0.10 \
         --forbid tcp/10.0.0.10:22 \
         --dry-run
     [ $status -eq 0 ]
@@ -33,7 +33,7 @@ output_contains() {
 
 @test "--dry-run --explain prints permits and forbids" {
     run traffico -i lo --at egress \
-        --allow tcp/10.0.0.10 \
+        --permit tcp/10.0.0.10 \
         --forbid tcp/10.0.0.10:22 \
         --dry-run --explain
     [ $status -eq 0 ]
@@ -63,14 +63,14 @@ output_contains() {
 
 @test "host-wide TCP and UDP forbids explain the v0.6 boundary" {
     run traffico -i lo --at egress \
-        --allow arp \
+        --permit arp \
         --forbid tcp/10.0.0.10 \
         --dry-run
     [ $status -eq 1 ]
     [ "${lines[0]}" == "traffico: host-wide TCP/UDP forbids are not supported; use tcp/IP:PORT or udp/IP:PORT: 'tcp/10.0.0.10'" ]
 
     run traffico -i lo --at egress \
-        --allow arp \
+        --permit arp \
         --forbid udp/10.0.0.20 \
         --dry-run
     [ $status -eq 1 ]

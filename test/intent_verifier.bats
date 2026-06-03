@@ -55,9 +55,9 @@ wait_for_intent_tc_state() {
     local i
 
     # Keep all 64 action rows while permitting ARP for L3 Scapy sends.
-    args+=(--allow arp)
+    args+=(--permit arp)
     for i in {1..31}; do
-        args+=(--allow "tcp/${VETH_ADDR}:$((10000 + i))")
+        args+=(--permit "tcp/${VETH_ADDR}:$((10000 + i))")
     done
     for i in {1..32}; do
         args+=(--forbid "tcp/${VETH_ADDR}:$((20000 + i))")
@@ -84,7 +84,7 @@ wait_for_intent_tc_state() {
     local i
 
     for i in {1..32}; do
-        args+=(--allow "tcp/10.0.0.${i}")
+        args+=(--permit "tcp/10.0.0.${i}")
     done
     for i in {1..33}; do
         args+=(--forbid "tcp/10.0.1.${i}:22")

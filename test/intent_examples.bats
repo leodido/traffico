@@ -60,7 +60,7 @@ wait_for_intent_tc_state() {
         --allow arp \
         --allow "dns/${RESOLVER_ADDR}" \
         --allow "tcp/${SERVICE_ADDR}" \
-        --forbid "tcp/${SERVICE_ADDR}:22" >/dev/null 3>&- &
+        --block "tcp/${SERVICE_ADDR}:22" >/dev/null 3>&- &
     wait_for_intent_tc_state
 
     assert_packet_seen "${NETNS}" 23001 \
@@ -84,7 +84,7 @@ wait_for_intent_tc_state() {
         --allow arp \
         --allow "tcp/${SERVICE_ADDR}" \
         --allow "udp/${SERVICE_ADDR}" \
-        --forbid "dns/${SERVICE_ADDR}" >/dev/null 3>&- &
+        --block "dns/${SERVICE_ADDR}" >/dev/null 3>&- &
     wait_for_intent_tc_state
 
     assert_packet_blocked "${NETNS}" 23101 \

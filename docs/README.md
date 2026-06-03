@@ -151,7 +151,7 @@ traffico --ifname=eth0 --at=EGRESS \
   --allow arp \
   --allow dns/10.0.0.53 \
   --allow tcp/10.0.0.10 \
-  --forbid tcp/10.0.0.10:22
+  --block tcp/10.0.0.10:22
 ```
 
 For a DNS carve-out inside broader TCP and UDP access to one host:
@@ -161,7 +161,7 @@ traffico --ifname=eth0 --at=EGRESS \
   --allow arp \
   --allow tcp/10.0.0.53 \
   --allow udp/10.0.0.53 \
-  --forbid dns/10.0.0.53
+  --block dns/10.0.0.53
 ```
 
 Use `--dry-run` to compile and validate without attaching:
@@ -170,7 +170,7 @@ Use `--dry-run` to compile and validate without attaching:
 traffico --ifname=eth0 --at=EGRESS \
   --allow arp \
   --allow tcp/10.0.0.10 \
-  --forbid tcp/10.0.0.10:22 \
+  --block tcp/10.0.0.10:22 \
   --dry-run
 ```
 
@@ -182,7 +182,7 @@ traffico --ifname=eth0 --at=EGRESS \
   --allow arp \
   --allow dns/10.0.0.53 \
   --allow tcp/10.0.0.10 \
-  --forbid tcp/10.0.0.10:22 \
+  --block tcp/10.0.0.10:22 \
   --dry-run --explain
 ```
 
